@@ -64,14 +64,15 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
       setLoading(true);
       try {
          // Create patient via backend with user account
-         const response = await api.post('/doctor/create-patient', {
+         // API Endpoint: /api/v1/patients (POST)
+         const response = await api.post('/patients', {
             full_name: fullName,
             email: email,
             password: password,
             phone_number: phone,
             date_of_birth: dateOfBirth.toISOString().split('T')[0],
             gender: gender.toLowerCase(),
-            address: address,
+            address: { street: address }, // Backend expects AddressSchema object
             medical_history: medicalHistory,
          });
 
@@ -82,7 +83,12 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
          );
       } catch (error) {
          console.error('Error adding patient:', error);
-         Alert.alert('Error', error.response?.data?.detail || 'Failed to add patient. Please try again.');
+         const errorDetail = error.response?.data?.detail;
+         const errorMessage = typeof errorDetail === 'object'
+            ? JSON.stringify(errorDetail)
+            : (errorDetail || 'Failed to add patient. Please try again.');
+
+         Alert.alert('Error', errorMessage);
       } finally {
          setLoading(false);
       }

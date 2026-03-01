@@ -38,6 +38,8 @@
   "name": "sara-medico",
   "version": "1.0.0",
   "devDependencies": {
-    "babel-preset-expo": "^54.0.10"
+    "babel-plugin-inline-dotenv": "^1.7.0",
+    "babel-preset-expo": "^54.0.10",
+    "dotenv": "^17.3.1"
   }
 }
