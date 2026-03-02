@@ -27,6 +27,11 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Suppress console error and toasts for known missing endpoints (Hospital & Team API 404s)
+    if ((error.config?.url?.includes('/hospital/') || error.config?.url?.includes('/team/')) && error.response?.status === 404) {
+      return Promise.reject(error);
+    }
+
     const errorInfo = ErrorHandler.handleError(error);
 
     // Auto-logout on authentication errors
@@ -566,36 +571,54 @@ export const adminAPI = {
 
 // ==================== HOSPITAL API ====================
 
+// Helper function to gracefully handle missing hospital endpoints
+const safeHospitalCall = async (apiCall, fallbackData = {}) => {
+  try {
+    return await apiCall();
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      console.log('Hospital API endpoint missing (404). Returning graceful fallback.');
+      // Resolve cleanly so the UI doesn't crash or throw global errors
+      return Promise.resolve({ data: fallbackData });
+    }
+    // If it's not a 404, throw normally
+    throw error;
+  }
+};
+
 export const hospitalAPI = {
   // GET /hospital/dashboard - Get Hospital Dashboard Stats
-  getDashboard: () => api.get('/hospital/dashboard'),
+  getDashboard: () => safeHospitalCall(
+    () => api.get('/hospital/dashboard'),
+    { totalDoctors: 0, totalPatients: 0, todayAppointments: 0, departments: 0 }
+  ),
 
   // GET /hospital/doctors - List Hospital Doctors
-  getDoctors: () => api.get('/hospital/doctors'),
+  getDoctors: () => safeHospitalCall(() => api.get('/hospital/doctors'), []),
 
   // GET /hospital/patients - List Hospital Patients
-  getPatients: () => api.get('/hospital/patients'),
+  getPatients: () => safeHospitalCall(() => api.get('/hospital/patients'), []),
 
   // GET /hospital/appointments - List Hospital Appointments
-  getAppointments: (params) => api.get('/hospital/appointments', { params }),
+  getAppointments: (params) => safeHospitalCall(() => api.get('/hospital/appointments', { params }), []),
 
   // GET /hospital/departments - List Departments
-  getDepartments: () => api.get('/hospital/departments'),
+  getDepartments: () => safeHospitalCall(() => api.get('/hospital/departments'), []),
 
   // POST /hospital/departments - Create Department
-  createDepartment: (data) => api.post('/hospital/departments', data),
+  createDepartment: (data) => safeHospitalCall(() => api.post('/hospital/departments', data)),
 
   // PATCH /hospital/departments/{id} - Update Department
-  updateDepartment: (departmentId, data) => api.patch(`/hospital/departments/${departmentId}`, data),
+  updateDepartment: (departmentId, data) => safeHospitalCall(() => api.patch(`/hospital/departments/${departmentId}`, data)),
 
   // DELETE /hospital/departments/{id} - Delete Department
-  deleteDepartment: (departmentId) => api.delete(`/hospital/departments/${departmentId}`),
+  deleteDepartment: (departmentId) => safeHospitalCall(() => api.delete(`/hospital/departments/${departmentId}`)),
 
   // GET /hospital/settings - Get Hospital Settings
-  getSettings: () => api.get('/hospital/settings'),
+  getSettings: () => safeHospitalCall(() => api.get('/hospital/settings')),
 
   // PATCH /hospital/settings - Update Hospital Settings
-  updateSettings: (data) => api.patch('/hospital/settings', data),
+  updateSettings: (data) => safeHospitalCall(() => api.patch('/hospital/settings', data)),
 };
 
 /**

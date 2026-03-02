@@ -30,11 +30,13 @@ export default {
         },
         plugins: [
             "expo-font",
+            "@react-native-community/datetimepicker",
             [
                 "expo-build-properties",
                 {
                     "android": {
-                        "minSdkVersion": 28
+                        "minSdkVersion": 28,
+                        "newArchEnabled": false
                     }
                 }
             ],

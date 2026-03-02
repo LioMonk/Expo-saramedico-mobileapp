@@ -1,6 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withRepeat,
+    withSequence,
+    withTiming,
+    withDelay,
+    Easing
+} from 'react-native-reanimated';
 import {
-    View, Text, StyleSheet, TouchableOpacity, Animated, Alert
+    View, Text, StyleSheet, TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,77 +29,51 @@ export default function DoctorDictateNotesScreen({ navigation }) {
     const [showLangSelector, setShowLangSelector] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
 
-    // Animations
-    const pulseAnim = new Animated.Value(1);
-    const waveAnim1 = new Animated.Value(0);
-    const waveAnim2 = new Animated.Value(0);
-    const waveAnim3 = new Animated.Value(0);
+    // Animations using Reanimated shared values
+    const pulseAnim = useSharedValue(1);
+    const waveAnim1 = useSharedValue(0);
+    const waveAnim2 = useSharedValue(0);
+    const waveAnim3 = useSharedValue(0);
 
     useEffect(() => {
         if (isRecording) {
             // Pulse animation
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, {
-                        toValue: 1.2,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(pulseAnim, {
-                        toValue: 1,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+            pulseAnim.value = withRepeat(
+                withSequence(
+                    withTiming(1.2, { duration: 1000, easing: Easing.linear }),
+                    withTiming(1, { duration: 1000, easing: Easing.linear })
+                ),
+                -1, // infinite repeat
+                false // do not reverse
+            );
 
             // Wave animations
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(waveAnim1, {
-                        toValue: 1,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(waveAnim1, {
-                        toValue: 0,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+            waveAnim1.value = withRepeat(
+                withSequence(
+                    withTiming(1, { duration: 800, easing: Easing.linear }),
+                    withTiming(0, { duration: 800, easing: Easing.linear })
+                ),
+                -1,
+                false
+            );
 
-            Animated.loop(
-                Animated.sequence([
-                    Animated.delay(200),
-                    Animated.timing(waveAnim2, {
-                        toValue: 1,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(waveAnim2, {
-                        toValue: 0,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+            waveAnim2.value = withRepeat(
+                withSequence(
+                    withDelay(200, withTiming(1, { duration: 800, easing: Easing.linear })),
+                    withTiming(0, { duration: 800, easing: Easing.linear })
+                ),
+                -1,
+                false
+            );
 
-            Animated.loop(
-                Animated.sequence([
-                    Animated.delay(400),
-                    Animated.timing(waveAnim3, {
-                        toValue: 1,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(waveAnim3, {
-                        toValue: 0,
-                        duration: 800,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+            waveAnim3.value = withRepeat(
+                withSequence(
+                    withDelay(400, withTiming(1, { duration: 800, easing: Easing.linear })),
+                    withTiming(0, { duration: 800, easing: Easing.linear })
+                ),
+                -1,
+                false
+            );
 
             // Timer
             const interval = setInterval(() => {
@@ -100,12 +82,32 @@ export default function DoctorDictateNotesScreen({ navigation }) {
 
             return () => clearInterval(interval);
         } else {
-            pulseAnim.setValue(1);
-            waveAnim1.setValue(0);
-            waveAnim2.setValue(0);
-            waveAnim3.setValue(0);
+            pulseAnim.value = 1;
+            waveAnim1.value = 0;
+            waveAnim2.value = 0;
+            waveAnim3.value = 0;
         }
     }, [isRecording]);
+
+    // Animated Styles
+    const pulseStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: pulseAnim.value }]
+    }));
+
+    const wave1Style = useAnimatedStyle(() => ({
+        opacity: waveAnim1.value,
+        transform: [{ scale: 1 + waveAnim1.value * 0.8 }] // map 0->1 to 1->1.8
+    }));
+
+    const wave2Style = useAnimatedStyle(() => ({
+        opacity: waveAnim2.value,
+        transform: [{ scale: 1 + waveAnim2.value * 0.6 }] // map 0->1 to 1->1.6
+    }));
+
+    const wave3Style = useAnimatedStyle(() => ({
+        opacity: waveAnim3.value,
+        transform: [{ scale: 1 + waveAnim3.value * 0.4 }] // map 0->1 to 1->1.4
+    }));
 
     const handleToggleRecording = async () => {
         if (isRecording) {
@@ -214,28 +216,19 @@ export default function DoctorDictateNotesScreen({ navigation }) {
                                 <Animated.View
                                     style={[
                                         styles.wave,
-                                        {
-                                            opacity: waveAnim1,
-                                            transform: [{ scale: waveAnim1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.8] }) }],
-                                        },
+                                        wave1Style
                                     ]}
                                 />
                                 <Animated.View
                                     style={[
                                         styles.wave,
-                                        {
-                                            opacity: waveAnim2,
-                                            transform: [{ scale: waveAnim2.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] }) }],
-                                        },
+                                        wave2Style
                                     ]}
                                 />
                                 <Animated.View
                                     style={[
                                         styles.wave,
-                                        {
-                                            opacity: waveAnim3,
-                                            transform: [{ scale: waveAnim3.interpolate({ inputRange: [0, 1], outputRange: [1, 1.4] }) }],
-                                        },
+                                        wave3Style
                                     ]}
                                 />
                             </>
@@ -245,7 +238,7 @@ export default function DoctorDictateNotesScreen({ navigation }) {
                             style={[
                                 styles.micButton,
                                 isRecording && { backgroundColor: '#E53935' },
-                                { transform: [{ scale: pulseAnim }] },
+                                pulseStyle
                             ]}
                         >
                             <TouchableOpacity onPress={handleToggleRecording}>

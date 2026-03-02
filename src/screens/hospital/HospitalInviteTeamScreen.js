@@ -30,7 +30,9 @@ export default function HospitalInviteTeamScreen({ navigation }) {
     const loadRoles = async () => {
         try {
             const response = await teamAPI.getTeamRoles();
-            setRoles(response.data || []);
+            const rolesData = response.data || [];
+            const roleStrings = rolesData.map(r => typeof r === 'string' ? r : r.role);
+            setRoles(roleStrings);
         } catch (error) {
             // Use default roles
             setRoles(['Doctor', 'Nurse', 'Admin', 'Receptionist']);
@@ -50,13 +52,20 @@ export default function HospitalInviteTeamScreen({ navigation }) {
 
         setLoading(true);
         try {
-            await teamAPI.inviteTeamMember({
+            let backendRole = 'MEMBER';
+            const upperRole = selectedRole.toUpperCase();
+            if (upperRole.includes('ADMIN')) backendRole = 'ADMINISTRATOR';
+            if (upperRole.includes('PATIENT')) backendRole = 'PATIENT';
+
+            const payload = {
                 email,
-                first_name: firstName,
-                last_name: lastName,
-                role: selectedRole.toLowerCase(),
-                specialty: selectedRole === 'Doctor' ? specialty : undefined,
-            });
+                full_name: `${firstName} ${lastName}`.trim(),
+                role: backendRole,
+                department_id: "00000000-0000-0000-0000-000000000000", // Fallback Default
+                department_role: specialty || selectedRole, // e.g., "Cardiologist" or "Nurse"
+            };
+
+            await teamAPI.inviteTeamMember(payload);
 
             Alert.alert(
                 'Invitation Sent!',

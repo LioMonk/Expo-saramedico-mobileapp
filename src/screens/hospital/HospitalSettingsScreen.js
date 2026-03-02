@@ -9,18 +9,20 @@ import {
     TextInput,
     Switch,
     Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import HospitalBottomNavBar from '../../components/HospitalBottomNavBar';
-import { hospitalAPI, authAPI, clearTokens } from '../../services/api';
+import { hospitalAPI, authAPI } from '../../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TOKEN_CONFIG } from '../../services/config';
 import SignOutModal from '../../components/SignOutModal';
 
 export default function HospitalSettingsScreen({ navigation }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [showSignOut, setShowSignOut] = useState(false);
+    const [showSignOutModal, setShowSignOutModal] = useState(false);
     const [hospitalInfo, setHospitalInfo] = useState({
         name: '',
         email: '',
@@ -91,9 +93,9 @@ export default function HospitalSettingsScreen({ navigation }) {
     };
 
     const handleSignOut = async () => {
-        setShowSignOut(false);
+        setShowSignOutModal(false);
         try {
-            await clearTokens();
+            await AsyncStorage.multiRemove([TOKEN_CONFIG.ACCESS_TOKEN_KEY, TOKEN_CONFIG.REFRESH_TOKEN_KEY]);
         } catch (e) {
             console.log('Sign out error:', e);
         }
@@ -110,7 +112,6 @@ export default function HospitalSettingsScreen({ navigation }) {
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={styles.loadingText}>Loading settings...</Text>
                 </View>
-                <HospitalBottomNavBar navigation={navigation} activeTab="Settings" />
             </SafeAreaView>
         );
     }
@@ -120,14 +121,15 @@ export default function HospitalSettingsScreen({ navigation }) {
             <View style={styles.contentContainer}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#333" />
-                    </TouchableOpacity>
                     <Text style={styles.headerTitle}>Settings</Text>
-                    <View style={{ width: 24 }} />
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={loading} onRefresh={loadSettings} colors={[COLORS.primary]} />
+                    }
+                >
                     {/* Hospital Info */}
                     <Text style={styles.sectionTitle}>Hospital Information</Text>
                     <View style={styles.card}>
@@ -257,7 +259,7 @@ export default function HospitalSettingsScreen({ navigation }) {
 
                         <TouchableOpacity
                             style={styles.menuItem}
-                            onPress={() => setShowSignOut(true)}
+                            onPress={() => setShowSignOutModal(true)}
                         >
                             <Ionicons name="log-out-outline" size={22} color="#F44336" />
                             <Text style={[styles.menuText, { color: '#F44336' }]}>Sign Out</Text>
@@ -269,11 +271,9 @@ export default function HospitalSettingsScreen({ navigation }) {
                 </ScrollView>
             </View>
 
-            <HospitalBottomNavBar navigation={navigation} activeTab="Settings" />
-
             <SignOutModal
-                visible={showSignOut}
-                onCancel={() => setShowSignOut(false)}
+                visible={showSignOutModal}
+                onCancel={() => setShowSignOutModal(false)}
                 onConfirm={handleSignOut}
             />
         </SafeAreaView>

@@ -8,7 +8,9 @@ import {
     Alert,
     ActivityIndicator,
     RefreshControl,
+    Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -20,9 +22,14 @@ import ErrorHandler from '../../services/errorHandler';
  * Displays the doctor's appointment schedule with Zoom integration
  */
 export default function DoctorScheduleScreen({ navigation }) {
-    const [appointments, setAppointments] = useState([]);
+    const [allAppointments, setAllAppointments] = useState([]);
+    const [filteredAppointments, setFilteredAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    
+    const [activeTab, setActiveTab] = useState('upcoming'); // all, upcoming, pending, past
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useEffect(() => {
         loadAppointments();
@@ -33,23 +40,7 @@ export default function DoctorScheduleScreen({ navigation }) {
 
         try {
             const response = await doctorAPI.getAppointments();
-            const allAppointments = response.data || [];
-
-            // Filter out past accepted appointments
-            const now = new Date();
-            const filteredAppointments = allAppointments.filter(appointment => {
-                const appointmentDate = new Date(appointment.requested_date);
-
-                // Keep all pending and declined appointments (for history)
-                if (appointment.status !== 'accepted') {
-                    return true;
-                }
-
-                // For accepted appointments, only show current or future ones
-                return appointmentDate >= now;
-            });
-
-            setAppointments(filteredAppointments);
+            setAllAppointments(response.data || []);
         } catch (error) {
             console.error('Failed to load appointments:', error);
             const errorInfo = ErrorHandler.handleError(error);
@@ -62,9 +53,58 @@ export default function DoctorScheduleScreen({ navigation }) {
         }
     };
 
+    useEffect(() => {
+        applyFilters();
+    }, [allAppointments, activeTab, selectedDate]);
+
+    const applyFilters = () => {
+        let result = [...allAppointments];
+        const now = new Date();
+
+        // 1. Tab Filter
+        if (activeTab === 'upcoming') {
+            result = result.filter(appt => appt.status === 'accepted' && new Date(appt.requested_date) >= now);
+        } else if (activeTab === 'pending') {
+            result = result.filter(appt => appt.status === 'pending');
+        } else if (activeTab === 'past') {
+            result = result.filter(appt => new Date(appt.requested_date) < now);
+        }
+
+        // 2. Date Filter
+        if (selectedDate) {
+            result = result.filter(appt => {
+                const apptDate = new Date(appt.requested_date);
+                return apptDate.getFullYear() === selectedDate.getFullYear() &&
+                       apptDate.getMonth() === selectedDate.getMonth() &&
+                       apptDate.getDate() === selectedDate.getDate();
+            });
+        }
+        
+        // Sort: Upcoming nearest first, Past most recent first
+        result.sort((a, b) => {
+            const dateA = new Date(a.requested_date);
+            const dateB = new Date(b.requested_date);
+            return activeTab === 'past' ? dateB - dateA : dateA - dateB;
+        });
+
+        setFilteredAppointments(result);
+    };
+
+
     const onRefresh = () => {
         setRefreshing(true);
         loadAppointments(true);
+    };
+
+        const onDateChange = (event, selected) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (selected) {
+            setSelectedDate(selected);
+        }
+    };
+
+    const clearDateFilter = () => {
+        setSelectedDate(null);
     };
 
     const handleStartCall = (appointment) => {
@@ -226,9 +266,43 @@ export default function DoctorScheduleScreen({ navigation }) {
                         <Ionicons name="arrow-back" size={24} color="#333" />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>My Schedule</Text>
-                    <TouchableOpacity onPress={onRefresh}>
-                        <Ionicons name="refresh" size={24} color={COLORS.primary} />
-                    </TouchableOpacity>
+                    <View style={styles.headerRight}>
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateIconWrapper}>
+                            <Ionicons name="calendar" size={22} color={selectedDate ? COLORS.primary : "#666"} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={onRefresh}>
+                            <Ionicons name="refresh" size={24} color={COLORS.primary} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Date Filter Indicator */}
+                {selectedDate && (
+                    <View style={styles.dateFilterChip}>
+                        <Text style={styles.dateFilterText}>
+                            {selectedDate.toLocaleDateString()}
+                        </Text>
+                        <TouchableOpacity onPress={clearDateFilter}>
+                            <Ionicons name="close-circle" size={18} color={COLORS.primary} />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Tabs */}
+                <View style={styles.tabsContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScroll}>
+                        {['upcoming', 'pending', 'past', 'all'].map(tab => (
+                            <TouchableOpacity
+                                key={tab}
+                                style={[styles.tab, activeTab === tab && styles.activeTab]}
+                                onPress={() => setActiveTab(tab)}
+                            >
+                                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
                 </View>
 
                 <ScrollView
@@ -237,8 +311,8 @@ export default function DoctorScheduleScreen({ navigation }) {
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                     }
                 >
-                    {appointments.length > 0 ? (
-                        appointments.map((appointment) => renderAppointment(appointment))
+                    {filteredAppointments.length > 0 ? (
+                        filteredAppointments.map((appointment) => renderAppointment(appointment))
                     ) : (
                         <View style={styles.emptyState}>
                             <Ionicons name="calendar-outline" size={64} color="#DDD" />
@@ -250,6 +324,15 @@ export default function DoctorScheduleScreen({ navigation }) {
                     )}
                 </ScrollView>
             </View>
+            
+            {showDatePicker && (
+                <DateTimePicker
+                    value={selectedDate || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
+                />
+            )}
         </SafeAreaView>
     );
 }
@@ -283,6 +366,16 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
     },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+    dateIconWrapper: { padding: 4 },
+    dateFilterChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, alignSelf: 'flex-start', marginBottom: 15, gap: 6 },
+    dateFilterText: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
+    tabsContainer: { marginBottom: 15 },
+    tabsScroll: { gap: 10, paddingRight: 20 },
+    tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F0F0' },
+    activeTab: { backgroundColor: COLORS.primary },
+    tabText: { color: '#666', fontWeight: '600', fontSize: 13 },
+    activeTabText: { color: 'white' },
     appointmentCard: {
         backgroundColor: 'white',
         borderRadius: 12,

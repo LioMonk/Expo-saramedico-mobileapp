@@ -11,8 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import HospitalBottomNavBar from '../../components/HospitalBottomNavBar';
-import HospitalSidebar from '../../components/HospitalSidebar';
 import { hospitalAPI, authAPI, teamAPI } from '../../services/api';
 
 export default function HospitalDashboard({ navigation }) {
@@ -51,12 +49,12 @@ export default function HospitalDashboard({ navigation }) {
                     setStats(dashboardRes.data);
                 }
             } catch (e) {
-                // Use demo stats if API not available
+                console.log('Dashboard stats API not yet available on backend (404 expected). Returning 0 for stats.');
                 setStats({
-                    totalDoctors: 12,
-                    totalPatients: 248,
-                    todayAppointments: 18,
-                    departments: 6,
+                    totalDoctors: 0,
+                    totalPatients: 0,
+                    todayAppointments: 0,
+                    departments: 0,
                 });
             }
 
@@ -101,12 +99,6 @@ export default function HospitalDashboard({ navigation }) {
 
     return (
         <SafeAreaView style={styles.container}>
-            <HospitalSidebar
-                isVisible={isSidebarVisible}
-                onClose={() => setIsSidebarVisible(false)}
-                navigation={navigation}
-            />
-
             <View style={styles.contentContainer}>
                 <ScrollView
                     showsVerticalScrollIndicator={false}
@@ -115,21 +107,6 @@ export default function HospitalDashboard({ navigation }) {
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
                     }
                 >
-
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => setIsSidebarVisible(true)}>
-                            <Ionicons name="menu-outline" size={28} color="#333" />
-                        </TouchableOpacity>
-                        <View style={styles.headerRight}>
-                            <TouchableOpacity>
-                                <Ionicons name="notifications-outline" size={24} color="#333" />
-                            </TouchableOpacity>
-                            <View style={styles.avatar}>
-                                <Ionicons name="business" size={20} color="#FFF" />
-                            </View>
-                        </View>
-                    </View>
 
                     {/* Greeting */}
                     <Text style={styles.greeting}>{getGreeting()}, {hospitalName}</Text>
@@ -226,47 +203,14 @@ export default function HospitalDashboard({ navigation }) {
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.activityCard}>
-                        <View style={styles.activityItem}>
-                            <View style={[styles.activityIcon, { backgroundColor: '#E3F2FD' }]}>
-                                <Ionicons name="person-add" size={20} color="#2196F3" />
-                            </View>
-                            <View style={styles.activityText}>
-                                <Text style={styles.activityTitle}>New team member joined</Text>
-                                <Text style={styles.activityTime}>2 hours ago</Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.divider} />
-
-                        <View style={styles.activityItem}>
-                            <View style={[styles.activityIcon, { backgroundColor: '#E8F5E9' }]}>
-                                <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-                            </View>
-                            <View style={styles.activityText}>
-                                <Text style={styles.activityTitle}>Appointment completed</Text>
-                                <Text style={styles.activityTime}>4 hours ago</Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.divider} />
-
-                        <View style={styles.activityItem}>
-                            <View style={[styles.activityIcon, { backgroundColor: '#FFF3E0' }]}>
-                                <Ionicons name="calendar" size={20} color="#FF9800" />
-                            </View>
-                            <View style={styles.activityText}>
-                                <Text style={styles.activityTitle}>New appointment scheduled</Text>
-                                <Text style={styles.activityTime}>Yesterday</Text>
-                            </View>
-                        </View>
+                    <View style={[styles.activityCard, { alignItems: 'center', paddingVertical: 30 }]}>
+                        <Ionicons name="time-outline" size={48} color="#DDD" />
+                        <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>No recent activity to display.</Text>
                     </View>
 
                     <View style={{ height: 100 }} />
                 </ScrollView>
             </View>
-
-            <HospitalBottomNavBar navigation={navigation} activeTab="Home" />
         </SafeAreaView>
     );
 }

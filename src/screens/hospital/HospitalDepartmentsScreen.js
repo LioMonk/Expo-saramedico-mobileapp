@@ -33,14 +33,8 @@ export default function HospitalDepartmentsScreen({ navigation }) {
             setDepartments(response.data || []);
         } catch (error) {
             console.log('Departments not available:', error.message);
-            // Demo data
-            setDepartments([
-                { id: '1', name: 'Cardiology', doctorsCount: 5, patientsToday: 12 },
-                { id: '2', name: 'Pediatrics', doctorsCount: 4, patientsToday: 8 },
-                { id: '3', name: 'Orthopedics', doctorsCount: 3, patientsToday: 6 },
-                { id: '4', name: 'Neurology', doctorsCount: 2, patientsToday: 4 },
-                { id: '5', name: 'Dermatology', doctorsCount: 2, patientsToday: 10 },
-            ]);
+            // Default to empty array on failure
+            setDepartments([]);
         } finally {
             setLoading(false);
         }

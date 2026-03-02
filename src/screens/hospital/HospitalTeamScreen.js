@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import HospitalBottomNavBar from '../../components/HospitalBottomNavBar';
 import { teamAPI } from '../../services/api';
 
 export default function HospitalTeamScreen({ navigation }) {
@@ -35,18 +34,16 @@ export default function HospitalTeamScreen({ navigation }) {
                 setTeamMembers(membersRes.data || []);
             } catch (e) {
                 console.log('Team members not available:', e.message);
-                // Use sample data for demo
-                setTeamMembers([
-                    { id: '1', name: 'Dr. John Smith', role: 'Doctor', specialty: 'Cardiology', status: 'active' },
-                    { id: '2', name: 'Dr. Sarah Johnson', role: 'Doctor', specialty: 'Pediatrics', status: 'active' },
-                    { id: '3', name: 'Mike Wilson', role: 'Admin', specialty: null, status: 'active' },
-                ]);
+                // Use empty array on failure
+                setTeamMembers([]);
             }
 
             // Load roles
             try {
                 const rolesRes = await teamAPI.getTeamRoles();
-                setRoles(rolesRes.data || []);
+                const rolesData = rolesRes.data || [];
+                const roleStrings = rolesData.map(r => typeof r === 'string' ? r : r.role);
+                setRoles(roleStrings);
             } catch (e) {
                 console.log('Roles not available:', e.message);
                 setRoles(['Doctor', 'Nurse', 'Admin', 'Receptionist']);
@@ -104,7 +101,6 @@ export default function HospitalTeamScreen({ navigation }) {
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={styles.loadingText}>Loading team...</Text>
                 </View>
-                <HospitalBottomNavBar navigation={navigation} activeTab="Team" />
             </SafeAreaView>
         );
     }
@@ -112,15 +108,9 @@ export default function HospitalTeamScreen({ navigation }) {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.contentContainer}>
-                {/* Header */}
+                {/* Header title only */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#333" />
-                    </TouchableOpacity>
                     <Text style={styles.headerTitle}>Team Management</Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('HospitalInviteTeamScreen')}>
-                        <Ionicons name="person-add" size={24} color={COLORS.primary} />
-                    </TouchableOpacity>
                 </View>
 
                 <ScrollView
@@ -214,8 +204,6 @@ export default function HospitalTeamScreen({ navigation }) {
                     <View style={{ height: 100 }} />
                 </ScrollView>
             </View>
-
-            <HospitalBottomNavBar navigation={navigation} activeTab="Team" />
         </SafeAreaView>
     );
 }

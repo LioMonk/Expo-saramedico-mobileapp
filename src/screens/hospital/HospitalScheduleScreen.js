@@ -7,11 +7,12 @@ import {
     SafeAreaView,
     TouchableOpacity,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import HospitalBottomNavBar from '../../components/HospitalBottomNavBar';
 import { hospitalAPI } from '../../services/api';
 
 export default function HospitalScheduleScreen({ navigation }) {
@@ -19,6 +20,7 @@ export default function HospitalScheduleScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [appointments, setAppointments] = useState([]);
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useEffect(() => {
         loadAppointments();
@@ -33,12 +35,8 @@ export default function HospitalScheduleScreen({ navigation }) {
             setAppointments(response.data || []);
         } catch (error) {
             console.log('Appointments not available:', error.message);
-            // Demo data
-            setAppointments([
-                { id: '1', patient: 'John Smith', doctor: 'Dr. Sarah Johnson', time: '09:00 AM', type: 'Consultation', status: 'confirmed' },
-                { id: '2', patient: 'Emma Wilson', doctor: 'Dr. Mike Chen', time: '10:30 AM', type: 'Follow-up', status: 'pending' },
-                { id: '3', patient: 'David Brown', doctor: 'Dr. Sarah Johnson', time: '02:00 PM', type: 'Check-up', status: 'confirmed' },
-            ]);
+            // Default to empty array instead of mock data
+            setAppointments([]);
         } finally {
             setLoading(false);
         }
@@ -59,19 +57,12 @@ export default function HospitalScheduleScreen({ navigation }) {
         }
     };
 
-    // Generate week dates
-    const getWeekDates = () => {
-        const dates = [];
-        const today = new Date();
-        for (let i = -3; i <= 3; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() + i);
-            dates.push(date);
+    const onDateChange = (event, selected) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (selected) {
+            setSelectedDate(selected);
         }
-        return dates;
     };
-
-    const weekDates = getWeekDates();
 
     if (loading) {
         return (
@@ -80,7 +71,6 @@ export default function HospitalScheduleScreen({ navigation }) {
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={styles.loadingText}>Loading schedule...</Text>
                 </View>
-                <HospitalBottomNavBar navigation={navigation} activeTab="Schedule" />
             </SafeAreaView>
         );
     }
@@ -90,37 +80,13 @@ export default function HospitalScheduleScreen({ navigation }) {
             <View style={styles.contentContainer}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#333" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Schedule</Text>
-                    <TouchableOpacity>
-                        <Ionicons name="filter-outline" size={24} color="#333" />
-                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Appointments</Text>
+                    <View style={styles.headerRight}>
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.calendarIcon}>
+                            <Ionicons name="calendar" size={24} color={COLORS.primary} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-
-                {/* Date Selector */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateSelector}>
-                    {weekDates.map((date, index) => {
-                        const isSelected = date.toDateString() === selectedDate.toDateString();
-                        const isToday = date.toDateString() === new Date().toDateString();
-                        return (
-                            <TouchableOpacity
-                                key={index}
-                                style={[styles.dateItem, isSelected && styles.dateItemSelected]}
-                                onPress={() => setSelectedDate(date)}
-                            >
-                                <Text style={[styles.dayText, isSelected && styles.dateTextSelected]}>
-                                    {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                                </Text>
-                                <Text style={[styles.dateNum, isSelected && styles.dateTextSelected]}>
-                                    {date.getDate()}
-                                </Text>
-                                {isToday && <View style={styles.todayDot} />}
-                            </TouchableOpacity>
-                        );
-                    })}
-                </ScrollView>
 
                 {/* Appointments */}
                 <ScrollView
@@ -170,7 +136,14 @@ export default function HospitalScheduleScreen({ navigation }) {
                 </ScrollView>
             </View>
 
-            <HospitalBottomNavBar navigation={navigation} activeTab="Schedule" />
+            {showDatePicker && (
+                <DateTimePicker
+                    value={selectedDate}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
+                />
+            )}
         </SafeAreaView>
     );
 }
@@ -181,16 +154,10 @@ const styles = StyleSheet.create({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     loadingText: { marginTop: 15, color: '#666', fontSize: 14 },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-
-    dateSelector: { marginBottom: 25 },
-    dateItem: { alignItems: 'center', paddingHorizontal: 15, paddingVertical: 12, marginRight: 10, borderRadius: 12, backgroundColor: 'white', borderWidth: 1, borderColor: '#F0F0F0' },
-    dateItemSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-    dayText: { fontSize: 12, color: '#666', marginBottom: 5 },
-    dateNum: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-    dateTextSelected: { color: 'white' },
-    todayDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginTop: 5 },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+    dateIconWrapper: { padding: 4 },
 
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
     sectionSubtitle: { fontSize: 13, color: '#666', marginBottom: 15 },
