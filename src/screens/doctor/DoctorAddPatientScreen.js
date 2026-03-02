@@ -23,6 +23,7 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
    const [address, setAddress] = useState('');
    const [medicalHistory, setMedicalHistory] = useState('');
    const [loading, setLoading] = useState(false);
+   const [showPassword, setShowPassword] = useState(false);
 
    const calculateAge = (dob) => {
       const today = new Date();
@@ -84,9 +85,21 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
       } catch (error) {
          console.error('Error adding patient:', error);
          const errorDetail = error.response?.data?.detail;
-         const errorMessage = typeof errorDetail === 'object'
-            ? JSON.stringify(errorDetail)
-            : (errorDetail || 'Failed to add patient. Please try again.');
+         let errorMessage = 'Failed to add patient. Please try again.';
+
+         if (Array.isArray(errorDetail)) {
+            // Parse FastAPI/Pydantic validation errors nicely
+            errorMessage = errorDetail.map(err => {
+               // Get the last item in the location array (usually the field name)
+               const field = err.loc && err.loc.length > 0 ? err.loc[err.loc.length - 1] : 'Field';
+               const readableField = String(field).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+               return `${readableField}: ${err.msg}`;
+            }).join('\n');
+         } else if (typeof errorDetail === 'string') {
+            errorMessage = errorDetail;
+         } else if (typeof errorDetail === 'object' && errorDetail !== null) {
+            errorMessage = JSON.stringify(errorDetail);
+         }
 
          Alert.alert('Error', errorMessage);
       } finally {
@@ -145,14 +158,22 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
                />
 
                <Text style={styles.label}>Password *</Text>
-               <TextInput
-                  placeholder="Set login password for patient"
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-               />
+               <View style={styles.passwordContainer}>
+                  <TextInput
+                     placeholder="Set login password for patient"
+                     style={styles.passwordInput}
+                     value={password}
+                     onChangeText={setPassword}
+                     secureTextEntry={!showPassword}
+                     autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                     style={styles.eyeIcon}
+                     onPress={() => setShowPassword(!showPassword)}
+                  >
+                     <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#999" />
+                  </TouchableOpacity>
+               </View>
 
                <Text style={styles.label}>Phone Number</Text>
                <TextInput
@@ -295,6 +316,9 @@ const styles = StyleSheet.create({
    label: { fontSize: 13, color: '#333', marginBottom: 8, fontWeight: '500' },
 
    input: { backgroundColor: 'white', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, paddingHorizontal: 15, height: 48, marginBottom: 20 },
+   passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, height: 48, marginBottom: 20 },
+   passwordInput: { flex: 1, paddingHorizontal: 15, height: '100%', color: '#333' },
+   eyeIcon: { padding: 10, paddingRight: 15 },
 
    row: { flexDirection: 'row' },
    dateInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, paddingHorizontal: 15, height: 48, marginBottom: 20 },

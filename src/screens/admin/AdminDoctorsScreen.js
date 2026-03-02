@@ -28,14 +28,13 @@ export default function AdminDoctorsScreen({ navigation }) {
         try {
             setLoading(true);
             const response = await doctorAPI.getAllDoctors();
-            setDoctors(response.data || []);
+            setDoctors(response.data?.results || response.data || []);
         } catch (error) {
-            console.log('Doctors not available:', error.message);
-            // Demo data
+            // Demo data with valid UUIDs for backend compatibility during errors
             setDoctors([
-                { id: '1', first_name: 'Arvind', last_name: 'Shukla', specialty: 'Cardiology', email: 'arvind@example.com', status: 'active' },
-                { id: '2', first_name: 'Avantika', last_name: 'Gupta', specialty: 'Pediatrics', email: 'avantika@example.com', status: 'active' },
-                { id: '3', first_name: 'Govind', last_name: 'Sharma', specialty: 'Neurology', email: 'govind@example.com', status: 'pending' },
+                { id: '11111111-1111-1111-1111-111111111111', name: 'Arvind Shukla', specialty: 'Cardiology', email: 'arvind@example.com', status: 'active' },
+                { id: '22222222-2222-2222-2222-222222222222', name: 'Avantika Gupta', specialty: 'Pediatrics', email: 'avantika@example.com', status: 'active' },
+                { id: '33333333-3333-3333-3333-333333333333', name: 'Govind Sharma', specialty: 'Neurology', email: 'govind@example.com', status: 'pending' },
             ]);
         } finally {
             setLoading(false);
@@ -49,7 +48,7 @@ export default function AdminDoctorsScreen({ navigation }) {
     };
 
     const filteredDoctors = doctors.filter(doc => {
-        const name = `${doc.first_name} ${doc.last_name}`.toLowerCase();
+        const name = `${doc.name || ''}`.toLowerCase();
         const query = searchQuery.toLowerCase();
         return name.includes(query) || doc.specialty?.toLowerCase().includes(query);
     });
@@ -118,15 +117,15 @@ export default function AdminDoctorsScreen({ navigation }) {
                         <TouchableOpacity
                             key={doctor.id || index}
                             style={styles.doctorCard}
-                            onPress={() => navigation.navigate('AdminEditUserScreen', { user: doctor, userType: 'doctor' })}
+                            onPress={() => navigation.navigate('AdminDoctorDetailScreen', { doctor })}
                         >
                             <View style={styles.doctorAvatar}>
                                 <Ionicons name="medical" size={24} color="#4CAF50" />
                             </View>
                             <View style={styles.doctorInfo}>
-                                <Text style={styles.doctorName}>Dr. {doctor.first_name} {doctor.last_name}</Text>
+                                <Text style={styles.doctorName}>Dr. {doctor.name || 'Unknown'}</Text>
                                 <Text style={styles.doctorSpecialty}>{doctor.specialty || 'General'}</Text>
-                                <Text style={styles.doctorEmail}>{doctor.email}</Text>
+                                {doctor.email && <Text style={styles.doctorEmail}>{doctor.email}</Text>}
                             </View>
                             <View style={[
                                 styles.statusBadge,

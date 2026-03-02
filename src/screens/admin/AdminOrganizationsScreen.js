@@ -28,9 +28,9 @@ export default function AdminOrganizationsScreen({ navigation }) {
         try {
             setLoading(true);
             const response = await organizationAPI.getOrganizations();
-            setOrganizations(response.data || []);
+            setOrganizations(response.data?.results || response.data || []);
         } catch (error) {
-            console.log('Organizations not available:', error.message);
+            // Suppressing 404 warning as admin global org view assumes mock for now
             // Demo data
             setOrganizations([
                 { id: '1', name: 'City General Hospital', type: 'hospital', email: 'city@hospital.com', status: 'active', members_count: 45 },

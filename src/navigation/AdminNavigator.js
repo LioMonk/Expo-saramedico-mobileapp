@@ -12,6 +12,12 @@ import AdminSearchScreen from '../screens/admin/AdminSearchScreen';
 import AdminDoctorsScreen from '../screens/admin/AdminDoctorsScreen';
 import AdminOrganizationsScreen from '../screens/admin/AdminOrganizationsScreen';
 import AdminAnalyticsScreen from '../screens/admin/AdminAnalyticsScreen';
+import AdminOrganizationSettingsScreen from '../screens/admin/AdminOrganizationSettingsScreen';
+import AdminDeveloperSettingsScreen from '../screens/admin/AdminDeveloperSettingsScreen';
+import AdminBackupSettingsScreen from '../screens/admin/AdminBackupSettingsScreen';
+import AdminOrgDetailScreen from '../screens/admin/AdminOrgDetailScreen';
+import AdminDoctorDetailScreen from '../screens/admin/AdminDoctorDetailScreen';
+import AdminAuditLogScreen from '../screens/admin/AdminAuditLogScreen';
 import FAQScreen from '../screens/common/FAQScreen';
 
 const Stack = createStackNavigator();
@@ -42,6 +48,12 @@ export default function AdminNavigator() {
       <Stack.Screen name="AdminEditUserScreen" component={AdminEditUserScreen} />
       <Stack.Screen name="AdminSearchScreen" component={AdminSearchScreen} />
       <Stack.Screen name="AdminAnalyticsScreen" component={AdminAnalyticsScreen} />
+      <Stack.Screen name="AdminOrganizationSettingsScreen" component={AdminOrganizationSettingsScreen} />
+      <Stack.Screen name="AdminDeveloperSettingsScreen" component={AdminDeveloperSettingsScreen} />
+      <Stack.Screen name="AdminBackupSettingsScreen" component={AdminBackupSettingsScreen} />
+      <Stack.Screen name="AdminOrgDetailScreen" component={AdminOrgDetailScreen} />
+      <Stack.Screen name="AdminDoctorDetailScreen" component={AdminDoctorDetailScreen} />
+      <Stack.Screen name="AuditLogScreen" component={AdminAuditLogScreen} />
       <Stack.Screen name="FAQScreen" component={FAQScreen} />
     </Stack.Navigator>
   );

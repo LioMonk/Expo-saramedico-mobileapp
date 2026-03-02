@@ -28,7 +28,7 @@ const getBaseUrl = () => {
     const apiEnvironment = 'local'; // getEnvVar('API_ENVIRONMENT', 'local').toLowerCase();
     const awsApiUrl = getEnvVar('AWS_API_URL', 'http://65.0.98.170:8000');
     const localApiHost = getEnvVar('LOCAL_API_HOST', '10.0.2.2');
-    const localApiPort = getEnvVar('LOCAL_API_PORT', '8001');
+    const localApiPort = getEnvVar('LOCAL_API_PORT', '8000');
 
     let baseUrl;
 

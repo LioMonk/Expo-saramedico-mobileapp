@@ -11,6 +11,7 @@ import PatientSettingsScreen from '../screens/patient/PatientSettingsScreen';
 import PatientNotificationsScreen from '../screens/patient/PatientNotificationsScreen';
 import DoctorSearchScreen from '../screens/patient/DoctorSearchScreen';
 import AppointmentBookingScreen from '../screens/patient/AppointmentBookingScreen';
+import AppointmentDetailScreen from '../screens/patient/AppointmentDetailScreen';
 
 // Shared
 import VideoCallScreen from '../screens/VideoCallScreen';
@@ -39,6 +40,7 @@ export default function PatientNavigator() {
       <Stack.Screen name="PatientSettingsScreen" component={PatientSettingsScreen} />
       <Stack.Screen name="DoctorSearch" component={DoctorSearchScreen} />
       <Stack.Screen name="AppointmentBooking" component={AppointmentBookingScreen} />
+      <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
 
       {/* Shared */}
       <Stack.Screen name="VideoCallScreen" component={VideoCallScreen} />

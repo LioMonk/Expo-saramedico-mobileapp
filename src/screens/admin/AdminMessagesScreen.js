@@ -1,35 +1,70 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AdminBottomNavBar from '../../components/AdminBottomNavBar';
+import { adminAPI } from '../../services/api';
 
 export default function AdminMessagesScreen({ navigation }) {
+   const [notifications, setNotifications] = useState([]);
+   const [loading, setLoading] = useState(true);
+
+   const loadNotifications = async () => {
+      try {
+         const overviewRes = await adminAPI.getOverview();
+         const activities = overviewRes.data?.recent_activity || [];
+
+         const formatted = activities.map(act => ({
+            id: act.id,
+            title: act.event_description,
+            body: act.user_name,
+            time: act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+            isUrgent: act.status !== 'completed'
+         }));
+         setNotifications(formatted);
+      } catch (err) {
+         console.log("Error fetching admin notifications:", err);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   // Real-time polling
+   useEffect(() => {
+      loadNotifications();
+      const interval = setInterval(() => {
+         loadNotifications();
+      }, 10000); // 10 seconds
+      return () => clearInterval(interval);
+   }, []);
+
    return (
       <SafeAreaView style={styles.container}>
          <View style={styles.contentContainer}>
             <View style={styles.header}>
                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-               <Text style={styles.headerTitle}>Messages</Text>
+               <Text style={styles.headerTitle}>Notifications</Text>
                <View style={{ width: 24 }} />
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-               <Text style={styles.sectionHeader}>TODAY</Text>
-               <View style={[styles.messageItem, styles.urgentItem]}>
-                  <View style={{ flex: 1 }}>
-                     <Text style={styles.msgTitle}>Critical Lab Result</Text>
-                     <Text style={styles.msgBody}>Potassium levels elevated...</Text>
-                  </View>
-                  <Text style={[styles.timeText, { color: '#F44336' }]}>15m ago</Text>
-               </View>
-               <View style={styles.messageItem}>
-                  <View style={{ flex: 1 }}>
-                     <Text style={styles.msgTitle}>Consultation summary ready</Text>
-                     <Text style={styles.msgBody}>Patient Daniel Koshaer...</Text>
-                  </View>
-                  <Text style={styles.timeText}>42m ago</Text>
-               </View>
+               <Text style={styles.sectionHeader}>RECENT ACTIVITY (Real-time)</Text>
+
+               {loading && notifications.length === 0 ? (
+                  <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>Loading notifications...</Text>
+               ) : notifications.length === 0 ? (
+                  <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No new notifications</Text>
+               ) : (
+                  notifications.map((notif, index) => (
+                     <View key={notif.id || index} style={[styles.messageItem, notif.isUrgent && styles.urgentItem]}>
+                        <View style={{ flex: 1 }}>
+                           <Text style={styles.msgTitle}>{notif.title || 'System Alert'}</Text>
+                           <Text style={styles.msgBody}>{notif.body}</Text>
+                        </View>
+                        <Text style={[styles.timeText, notif.isUrgent && { color: '#F44336' }]}>{notif.time}</Text>
+                     </View>
+                  ))
+               )}
             </ScrollView>
          </View>
          <AdminBottomNavBar navigation={navigation} activeTab="Messages" />

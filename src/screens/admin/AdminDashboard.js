@@ -38,8 +38,8 @@ export default function AdminDashboard({ navigation }) {
       // Load admin profile
       try {
         const profileRes = await authAPI.getCurrentUser();
-        const firstName = profileRes.data?.first_name || '';
-        setAdminName(firstName || 'Admin');
+        const fullName = profileRes.data?.full_name || '';
+        setAdminName(fullName || 'Admin');
       } catch (e) {
         console.log('Using default admin name');
       }
@@ -211,16 +211,25 @@ export default function AdminDashboard({ navigation }) {
 
           <View style={styles.card}>
             {dashboardData.recentActivity.length > 0 ? (
-              dashboardData.recentActivity.slice(0, 3).map((activity, index) => (
-                <ActivityItem
-                  key={index}
-                  name={activity.name || 'Unknown User'}
-                  time={activity.time || 'Recently'}
-                  desc={activity.description || 'Activity'}
-                  color={activity.color || '#90CAF9'}
-                  icon={activity.icon || 'information-circle'}
-                />
-              ))
+              dashboardData.recentActivity.slice(0, 3).map((activity, index) => {
+                // Parse timestamp if exists
+                let timeStr = 'Recently';
+                if (activity.timestamp) {
+                  const dateObj = new Date(activity.timestamp);
+                  timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+
+                return (
+                  <ActivityItem
+                    key={index}
+                    name={activity.user_name || 'Unknown User'}
+                    time={timeStr}
+                    desc={activity.event_description || 'Activity'}
+                    color={activity.color || '#90CAF9'}
+                    icon={activity.icon || 'information-circle'}
+                  />
+                );
+              })
             ) : (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <Ionicons name="time-outline" size={32} color="#ccc" />

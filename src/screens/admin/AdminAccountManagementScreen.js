@@ -178,7 +178,7 @@ export default function AdminAccountManagementScreen({ navigation }) {
               <TouchableOpacity
                 key={`${item.id}-${index}`}
                 style={styles.row}
-                onPress={() => navigation.navigate('AdminEditUserScreen', { userId: item.id, accountType: item.type })}
+                onPress={() => navigation.navigate('AdminEditUserScreen', { user: item })}
               >
                 <View style={{ flex: 2 }}>
                   <Text style={styles.cellTextBold}>{item.name}</Text>

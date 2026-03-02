@@ -217,7 +217,7 @@ export default function AdminSettingsScreen({ navigation }) {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Admin Settings */}
+                    {/* Admin Settings 
                     <Text style={styles.sectionTitle}>Admin Settings</Text>
                     <View style={styles.card}>
                         <TouchableOpacity
@@ -252,7 +252,6 @@ export default function AdminSettingsScreen({ navigation }) {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Support */}
                     <Text style={styles.sectionTitle}>Support</Text>
                     <View style={styles.card}>
                         <TouchableOpacity style={styles.menuItem}>
@@ -277,6 +276,7 @@ export default function AdminSettingsScreen({ navigation }) {
                             <Ionicons name="chevron-forward" size={20} color="#999" />
                         </TouchableOpacity>
                     </View>
+                    */}
 
                     {/* Sign Out */}
                     <TouchableOpacity
@@ -291,7 +291,7 @@ export default function AdminSettingsScreen({ navigation }) {
 
                     <View style={{ height: 100 }} />
                 </ScrollView>
-            </View>
+            </View >
 
             <AdminBottomNavBar navigation={navigation} activeTab="Settings" />
 
@@ -374,7 +374,7 @@ export default function AdminSettingsScreen({ navigation }) {
                 onCancel={() => setShowSignOut(false)}
                 onConfirm={handleSignOut}
             />
-        </SafeAreaView>
+        </SafeAreaView >
     );
 }
 

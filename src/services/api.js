@@ -150,7 +150,7 @@ export const patientAPI = {
   getMyAppointments: () => api.get('/appointments/patient-appointments'),
 
   // POST /appointments/request (Create appointment request) - FIXED to match backend
-  requestAppointment: (data) => api.post('/appointments/request', data),
+  requestAppointment: (data) => api.post('/appointments', data),
 
   // GET /appointments/patient-appointments - List all patient appointments
   getAppointments: () => api.get('/appointments/patient-appointments'),
@@ -174,6 +174,9 @@ export const doctorAPI = {
   // GET /doctor/patients (supports search param)
   getPatients: () => api.get('/doctor/patients'),
 
+  // GET /doctors (All doctors for admin/patient directory)
+  getAllDoctors: () => api.get('/doctors/directory'),
+
   // Search patients by name
   searchPatients: (query) => api.get('/doctor/patients', { params: { search: query } }),
 
@@ -192,20 +195,21 @@ export const doctorAPI = {
   approveAppointment: (id, data) => api.post(`/appointments/${id}/approve`, data),
 
   // POST /appointments/instant (Create instant appointment with Zoom)
-  createInstantAppointment: (patientId) => api.post('/appointments/instant', null, {
-    params: { patient_id: patientId }
+  createInstantAppointment: (patientId) => api.post('/appointments', {
+    doctor_id: "SELF",
+    requested_date: new Date().toISOString(),
+    reason: "Instant Consultation",
+    patient_id: patientId
   }),
 
-  // PATCH /appointments/{id}/status (Reject)
+  // PATCH /appointments/{id}/status (Accept/Reject)
   updateAppointmentStatus: (id, status, notes) => api.patch(`/appointments/${id}/status`, {
     status,
     doctor_notes: notes,
   }),
 
-  // GET /api/v1/documents (with patient filter)
-  getPatientDocuments: (patientId) => api.get('/api/v1/documents', {
-    params: { patient_id: patientId }
-  }),
+  // GET /documents (with patient filter)
+  getPatientDocuments: (patientId) => api.get(`/doctor/patients/${patientId}/documents`),
 
   // Task Management - /doctor/tasks
   createTask: (data) => api.post('/doctor/tasks', data),
@@ -214,15 +218,15 @@ export const doctorAPI = {
   deleteTask: (id) => api.delete(`/doctor/tasks/${id}`),
 
   // Dashboard/Analytics (Optional)
-  getDashboardStats: () => api.get('/doctor/dashboard/stats'),
-  getUpcomingAppointments: () => api.get('/doctor/appointments/upcoming'),
+  getDashboardStats: () => api.get('/doctor/me/dashboard'),
+  getUpcomingAppointments: () => api.get('/doctor/schedule/next'),
 
   // Doctor Records
   createRecord: (patientId, data) => api.post('/doctor/records', {
     patient_id: patientId,
     ...data
   }),
-  getRecords: (patientId) => api.get('/doctor/records', {
+  getRecords: (patientId) => api.get('/consultations', {
     params: { patient_id: patientId }
   }),
   updateRecord: (recordId, data) => api.patch(`/doctor/records/${recordId}`, data),
@@ -286,24 +290,24 @@ export const consultationAPI = {
 // ==================== APPOINTMENT API ====================
 
 export const appointmentAPI = {
-  // POST /api/v1/appointments - Create appointment
-  createAppointment: (data) => api.post('/api/v1/appointments', data),
+  // POST /appointments - Create appointment
+  createAppointment: (data) => api.post('/appointments', data),
 
-  // GET /api/v1/appointments/patient-appointments - Get patient appointments
-  getPatientAppointments: (patientId) => api.get('/api/v1/appointments/patient-appointments', {
+  // GET /appointments/patient-appointments - Get patient appointments
+  getPatientAppointments: (patientId) => api.get('/appointments/patient-appointments', {
     params: { patient_id: patientId }
   }),
 
-  // PATCH /api/v1/appointments/{appointment_id}/status - Update appointment status
-  updateAppointmentStatus: (appointmentId, status) => api.patch(`/api/v1/appointments/${appointmentId}/status`, {
+  // PATCH /appointments/{appointment_id}/status - Update appointment status
+  updateAppointmentStatus: (appointmentId, status) => api.patch(`/appointments/${appointmentId}/status`, {
     status
   }),
 
-  // POST /api/v1/appointments/request - Request appointment
-  requestAppointment: (data) => api.post('/api/v1/appointments/request', data),
+  // POST /appointments/request - Request appointment
+  requestAppointment: (data) => api.post('/appointments', data),
 
-  // POST /api/v1/appointments/{appointment_id}/approve - Approve appointment
-  approveAppointment: (appointmentId) => api.post(`/api/v1/appointments/${appointmentId}/approve`),
+  // POST /appointments/{appointment_id}/approve - Approve appointment
+  approveAppointment: (appointmentId) => api.post(`/appointments/${appointmentId}/approve`),
 };
 
 // ==================== ZOOM INTEGRATION ========================
@@ -332,12 +336,13 @@ export const aiChatAPI = {
   // POST /api/v1/doctor/ai/chat/patient - Chat about a specific patient
   chatAboutPatient: (patientId, message) => api.post('/doctor/ai/chat/patient', {
     patient_id: patientId,
-    message: message
+    query: message
   }),
 
   // POST /api/v1/doctor/ai/chat/doctor - General AI chat for doctors
-  chatWithAI: (message) => api.post('/doctor/ai/chat/doctor', {
-    message: message
+  chatWithAI: (message, conversationId) => api.post('/doctor/ai/chat/doctor', {
+    query: message,
+    conversation_id: conversationId
   }),
 
   // GET /api/v1/doctor/ai/chat-history/patient - Get patient-specific chat history
@@ -346,12 +351,19 @@ export const aiChatAPI = {
   }),
 
   // GET /api/v1/doctor/ai/chat-history/doctor - Get doctor's general chat history
-  getDoctorChatHistory: () => api.get('/doctor/ai/chat-history/doctor'),
+  getDoctorChatHistory: (patientId = null) => {
+    const params = {};
+    if (patientId) params.patient_id = patientId;
+    return api.get('/doctor/ai/chat-history/doctor', { params });
+  },
 };
 
 // ==================== ORGANIZATION & TEAM API ====================
 
 export const organizationAPI = {
+  // GET /organizations
+  getOrganizations: () => api.get('/organizations'),
+
   // GET /organizations/{id}
   getOrganization: (id) => api.get(`/organizations/${id}`),
 
@@ -544,6 +556,12 @@ export const adminAPI = {
 
   // PATCH /api/v1/admin/accounts/{id} - Update Account
   updateAccount: (userId, data) => api.patch(`/admin/accounts/${userId}`, data),
+
+  // GET /api/v1/admin/doctors/{id}/details - Get Doctor Specific details
+  getDoctorDetails: (doctorId) => api.get(`/admin/doctors/${doctorId}/details`),
+
+  // GET /api/v1/admin/audit-logs - Get Audit Logs
+  getAuditLogs: () => api.get('/admin/audit-logs'),
 };
 
 // ==================== HOSPITAL API ====================
@@ -596,4 +614,4 @@ export const isAuthenticated = async () => {
 export default api;
 
 // Export API_BASE_URL for use in OAuth flows
-export const API_BASE_URL = API_CONFIG.BASE_URL.replace('/api/v1', '');
+export const API_BASE_URL = API_CONFIG.BASE_URL;

@@ -17,10 +17,12 @@ import DoctorPatientDirectoryScreen from '../screens/doctor/DoctorPatientDirecto
 import DoctorAddPatientScreen from '../screens/doctor/DoctorAddPatientScreen';
 import DoctorPatientDetailScreen from '../screens/doctor/DoctorPatientDetailScreen';
 import DoctorPostVisitScreen from '../screens/doctor/DoctorPostVisitScreen';
+import AppointmentDetailScreen from '../screens/patient/AppointmentDetailScreen';
 
 // Tools & Schedule
 import DoctorQuickUploadScreen from '../screens/doctor/DoctorQuickUploadScreen';
 import DoctorAnalyzedResultScreen from '../screens/doctor/DoctorAnalyzedResultScreen';
+import DoctorAIChatScreen from '../screens/doctor/DoctorAIChatScreen';
 import DoctorScheduleScreen from '../screens/doctor/DoctorScheduleScreen';
 import DoctorAlertsScreen from '../screens/doctor/DoctorAlertsScreen';
 
@@ -96,8 +98,10 @@ export default function DoctorNavigator() {
       <Stack.Screen name="DoctorPostVisitScreen" component={DoctorPostVisitScreen} />
 
       {/* 4. Clinical Tools */}
+      <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
       <Stack.Screen name="DoctorQuickUploadScreen" component={DoctorQuickUploadScreen} />
       <Stack.Screen name="DoctorAnalyzedResultScreen" component={DoctorAnalyzedResultScreen} />
+      <Stack.Screen name="DoctorAIChatScreen" component={DoctorAIChatScreen} />
 
       {/* 5. Schedule & Alerts */}
       <Stack.Screen name="DoctorScheduleScreen" component={DoctorScheduleScreen} />

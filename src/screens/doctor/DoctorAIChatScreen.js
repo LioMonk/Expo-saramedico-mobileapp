@@ -4,14 +4,15 @@ import {
     Text,
     StyleSheet,
     ScrollView,
-    SafeAreaView,
     TouchableOpacity,
     TextInput,
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
     Alert,
+    Modal
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { aiChatAPI, doctorAPI } from '../../services/api';
@@ -22,7 +23,10 @@ export default function DoctorAIChatScreen({ navigation, route }) {
     const [chatMode, setChatMode] = useState(initialPatientId ? 'patient' : 'general');
     const [selectedPatientId, setSelectedPatientId] = useState(initialPatientId || '');
     const [patients, setPatients] = useState([]);
+    const [allMessages, setAllMessages] = useState([]);
     const [messages, setMessages] = useState([]);
+    const [currentConversationId, setCurrentConversationId] = useState(null);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [inputMessage, setInputMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingHistory, setLoadingHistory] = useState(false);
@@ -44,6 +48,16 @@ export default function DoctorAIChatScreen({ navigation, route }) {
         }
     }, [chatMode, selectedPatientId]);
 
+    
+    useEffect(() => {
+        if (currentConversationId) {
+            const filtered = allMessages.filter(m => m.conversation_id === currentConversationId);
+            setMessages([...filtered].reverse()); 
+        } else {
+            setMessages([]);
+        }
+    }, [currentConversationId, allMessages]);
+
     const loadPatients = async () => {
         try {
             const response = await doctorAPI.getPatients();
@@ -64,14 +78,46 @@ export default function DoctorAIChatScreen({ navigation, route }) {
                 response = await aiChatAPI.getDoctorChatHistory();
             }
 
-            const history = response?.data?.messages || response?.data || [];
-            setMessages(history);
+            const resultData = response?.data || {};
+            const historyArray = resultData.history || resultData.messages || (Array.isArray(resultData) ? resultData : []);
+            setAllMessages(historyArray);
+            
+            if (historyArray.length > 0 && !currentConversationId) {
+                const firstWithId = historyArray.find(m => m.conversation_id);
+                if (firstWithId) {
+                    setCurrentConversationId(firstWithId.conversation_id);
+                }
+            }
         } catch (error) {
             console.error('Error loading chat history:', error);
-            setMessages([]);
+            setAllMessages([]);
         } finally {
             setLoadingHistory(false);
         }
+    };
+
+    
+
+    const getChatSessions = () => {
+        const sessions = [];
+        const seenIds = new Set();
+        
+        allMessages.forEach(msg => {
+            const cId = msg.conversation_id;
+            if (cId && !seenIds.has(cId)) {
+                seenIds.add(cId);
+                const sessionMsgs = allMessages.filter(m => m.conversation_id === cId);
+                const userMsgs = sessionMsgs.filter(m => m.role === 'user');
+                const titleMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].content : "New Conversation";
+                
+                sessions.push({
+                    id: cId,
+                    title: titleMsg.substring(0, 30) + (titleMsg.length > 30 ? "..." : ""),
+                    timestamp: msg.created_at || msg.timestamp || new Date().toISOString()
+                });
+            }
+        });
+        return sessions;
     };
 
     const handleSendMessage = async () => {
@@ -82,14 +128,20 @@ export default function DoctorAIChatScreen({ navigation, route }) {
             return;
         }
 
+        const activeConversationId = currentConversationId || Date.now().toString();
+        if (!currentConversationId) {
+            setCurrentConversationId(activeConversationId);
+        }
+
         const userMessage = {
             id: Date.now().toString(),
             role: 'user',
             content: inputMessage.trim(),
             timestamp: new Date().toISOString(),
+            conversation_id: activeConversationId
         };
 
-        setMessages(prev => [...prev, userMessage]);
+        setAllMessages(prev => [userMessage, ...prev]);
         setInputMessage('');
         setLoading(true);
 
@@ -98,23 +150,34 @@ export default function DoctorAIChatScreen({ navigation, route }) {
             if (chatMode === 'patient') {
                 response = await aiChatAPI.chatAboutPatient(selectedPatientId, inputMessage.trim());
             } else {
-                response = await aiChatAPI.chatWithAI(inputMessage.trim());
+                response = await aiChatAPI.chatWithAI(inputMessage.trim(), activeConversationId);
+            }
+
+            let aiResponseText = '';
+
+            // The backend returns a StreamingResponse with media_type="text/event-stream"
+            // Axios returns this as raw text in response.data when the stream finishes for simple connections
+            if (typeof response.data === 'string') {
+                aiResponseText = response.data;
+            } else {
+                aiResponseText = response.data?.response || response.data?.message || 'I apologize, but I could not process your request.';
             }
 
             const aiMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: response.data?.response || response.data?.message || 'I apologize, but I could not process your request.',
+                content: aiResponseText,
                 timestamp: new Date().toISOString(),
+                conversation_id: activeConversationId
             };
 
-            setMessages(prev => [...prev, aiMessage]);
+            setAllMessages(prev => [aiMessage, ...prev]);
         } catch (error) {
             console.error('Error sending message:', error);
             Alert.alert('Error', 'Failed to send message. Please try again.');
 
             // Remove the user message if sending failed
-            setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
+            setAllMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
         } finally {
             setLoading(false);
         }
@@ -177,7 +240,13 @@ export default function DoctorAIChatScreen({ navigation, route }) {
         <SafeAreaView style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <TouchableOpacity onPress={() => {
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        navigation.navigate('DoctorDashboard');
+                    }
+                }} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
                 <View style={styles.headerCenter}>
@@ -186,12 +255,12 @@ export default function DoctorAIChatScreen({ navigation, route }) {
                         {chatMode === 'patient' ? getSelectedPatientName() : 'General Consultation'}
                     </Text>
                 </View>
-                <TouchableOpacity style={styles.menuButton}>
+                <TouchableOpacity style={styles.menuButton} onPress={() => setShowHistoryModal(true)}>
                     <Ionicons name="ellipsis-vertical" size={24} color="#333" />
                 </TouchableOpacity>
             </View>
 
-            {/* Mode Toggle */}
+            {/* Mode Toggle 
             <View style={styles.modeToggle}>
                 <TouchableOpacity
                     style={[styles.modeButton, chatMode === 'general' && styles.modeButtonActive]}
@@ -226,6 +295,7 @@ export default function DoctorAIChatScreen({ navigation, route }) {
                     </Text>
                 </TouchableOpacity>
             </View>
+            */}
 
             {/* Patient Selector */}
             {chatMode === 'patient' && (
@@ -267,8 +337,8 @@ export default function DoctorAIChatScreen({ navigation, route }) {
             {/* Messages */}
             <KeyboardAvoidingView
                 style={styles.chatContainer}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
             >
                 {loadingHistory ? (
                     <View style={styles.loadingContainer}>
@@ -334,7 +404,68 @@ export default function DoctorAIChatScreen({ navigation, route }) {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+            {/* Chat History Modal */}
+            <Modal
+                visible={showHistoryModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+                onRequestClose={() => setShowHistoryModal(false)}
+            >
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Chat History</Text>
+                        <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
+                            <Ionicons name="close" size={24} color="#333" />
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <TouchableOpacity 
+                        style={styles.newChatButton}
+                        onPress={() => {
+                            setCurrentConversationId(null);
+                            setShowHistoryModal(false);
+                        }}
+                    >
+                        <Ionicons name="add" size={20} color="#FFF" />
+                        <Text style={styles.newChatText}>New Chat</Text>
+                    </TouchableOpacity>
+
+                    <ScrollView style={styles.historyList}>
+                        {getChatSessions().map(session => (
+                            <TouchableOpacity
+                                key={session.id}
+                                style={[
+                                    styles.historyItem,
+                                    currentConversationId === session.id && styles.historyItemActive
+                                ]}
+                                onPress={() => {
+                                    setCurrentConversationId(session.id);
+                                    setShowHistoryModal(false);
+                                }}
+                            >
+                                <Ionicons 
+                                    name="chatbubble-outline" 
+                                    size={20} 
+                                    color={currentConversationId === session.id ? COLORS.primary : "#666"} 
+                                />
+                                <View style={styles.historyItemContent}>
+                                    <Text style={[
+                                        styles.historyItemTitle,
+                                        currentConversationId === session.id && styles.historyItemTitleActive
+                                    ]}>
+                                        {session.title}
+                                    </Text>
+                                    <Text style={styles.historyItemTime}>
+                                        {new Date(session.timestamp).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </SafeAreaView>
+            </Modal>
         </SafeAreaView>
+
     );
 }
 
@@ -585,7 +716,20 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+
     sendButtonDisabled: {
         backgroundColor: '#D1D5DB',
     },
+    modalContainer: { flex: 1, backgroundColor: '#F9FAFC' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', backgroundColor: '#FFF' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+    newChatButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, margin: 16, padding: 12, borderRadius: 8, gap: 8 },
+    newChatText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+    historyList: { flex: 1 },
+    historyItem: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12 },
+    historyItemActive: { backgroundColor: '#F0F9FF' },
+    historyItemContent: { flex: 1 },
+    historyItemTitle: { fontSize: 15, fontWeight: '500', color: '#333', marginBottom: 4 },
+    historyItemTitleActive: { color: COLORS.primary, fontWeight: '600' },
+    historyItemTime: { fontSize: 12, color: '#999' },
 });

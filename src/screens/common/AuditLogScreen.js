@@ -33,7 +33,7 @@ export default function AuditLogScreen({ navigation }) {
             const logsData = response.data?.logs || response.data || [];
             setLogs(Array.isArray(logsData) ? logsData : []);
         } catch (error) {
-            console.error('Error fetching audit logs:', error);
+            console.error('Error fetching audit logs:', error.message || error);
             // Use demo data if API not available
             setLogs([
                 {
@@ -132,8 +132,8 @@ export default function AuditLogScreen({ navigation }) {
                         <Ionicons name={iconData.name} size={20} color={iconData.color} />
                     </View>
                     <View style={styles.logContent}>
-                        <Text style={styles.logAction}>{log.action}</Text>
-                        <Text style={styles.logDescription}>{log.description}</Text>
+                        <Text style={styles.logAction}>{log.action || 'Unknown Action'}</Text>
+                        <Text style={styles.logDescription}>{log.description || `Accessed resource: ${log.resource_type || 'Unknown'}`}</Text>
                         <View style={styles.logMeta}>
                             <View style={styles.metaItem}>
                                 <Ionicons name="time" size={14} color="#9CA3AF" />

@@ -136,7 +136,11 @@ export default function ScheduleScreen({ navigation }) {
             appointments.map((appt) => {
               const statusStyle = getStatusStyle(appt.status);
               return (
-                <View key={appt.id} style={styles.appointmentCard}>
+                <TouchableOpacity
+                  key={appt.id}
+                  style={styles.appointmentCard}
+                  onPress={() => navigation.navigate('AppointmentDetail', { appointment: appt })}
+                >
                   {/* Date Header */}
                   <View style={styles.dateHeader}>
                     <Ionicons name="calendar-outline" size={16} color="#666" />
@@ -209,7 +213,7 @@ export default function ScheduleScreen({ navigation }) {
                       </View>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           ) : (
@@ -217,13 +221,13 @@ export default function ScheduleScreen({ navigation }) {
               <Ionicons name="calendar-outline" size={64} color="#DDD" />
               <Text style={styles.emptyText}>No appointments scheduled</Text>
               <Text style={styles.emptySubtext}>
-                Book an appointment with a doctor to get started
+                Schedule an appointment with a doctor to get started
               </Text>
               <TouchableOpacity
                 style={styles.bookButton}
                 onPress={() => navigation.navigate('DoctorSearch')}
               >
-                <Text style={styles.bookButtonText}>Find a Doctor</Text>
+                <Text style={styles.bookButtonText}>Book New Schedule</Text>
               </TouchableOpacity>
             </View>
           )}
