@@ -11,6 +11,8 @@ import HospitalAnalyticsScreen from '../screens/hospital/HospitalAnalyticsScreen
 import HospitalMessagesScreen from '../screens/hospital/HospitalMessagesScreen';
 import HospitalDoctorsScreen from '../screens/hospital/HospitalDoctorsScreen';
 import HospitalNursesScreen from '../screens/hospital/HospitalNursesScreen';
+import HospitalScheduleScreen from '../screens/hospital/HospitalScheduleScreen';
+import HospitalSettingsScreen from '../screens/hospital/HospitalSettingsScreen';
 import FAQScreen from '../screens/common/FAQScreen';
 
 const Stack = createStackNavigator();
@@ -34,6 +36,8 @@ export default function HospitalNavigator() {
       <Stack.Screen name="HospitalMessagesScreen" component={HospitalMessagesScreen} />
       <Stack.Screen name="HospitalDoctorsScreen" component={HospitalDoctorsScreen} />
       <Stack.Screen name="HospitalNursesScreen" component={HospitalNursesScreen} />
+      <Stack.Screen name="HospitalScheduleScreen" component={HospitalScheduleScreen} />
+      <Stack.Screen name="HospitalSettingsScreen" component={HospitalSettingsScreen} />
       <Stack.Screen name="FAQScreen" component={FAQScreen} />
     </Stack.Navigator>
   );

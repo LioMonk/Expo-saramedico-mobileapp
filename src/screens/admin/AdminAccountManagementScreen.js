@@ -107,8 +107,12 @@ export default function AdminAccountManagementScreen({ navigation }) {
             <Ionicons name="menu-outline" size={28} color="#333" />
           </TouchableOpacity>
           <View style={styles.headerRight}>
-            <TouchableOpacity><Ionicons name="notifications-outline" size={24} color="#333" /></TouchableOpacity>
-            <View style={styles.avatar} />
+            <TouchableOpacity onPress={() => navigation.navigate('AdminSettingsScreen')}>
+              <Ionicons name="notifications-outline" size={24} color="#333" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('AdminSettingsScreen')}>
+              <View style={styles.avatar} />
+            </TouchableOpacity>
           </View>
         </View>
 

@@ -3,6 +3,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { TouchableOpacity, StyleSheet, View } from 'react-native';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 
 // Screens & Navigators
 import HospitalTabNavigator from './HospitalTabNavigator';
@@ -12,7 +13,27 @@ import HospitalDepartmentsScreen from '../screens/hospital/HospitalDepartmentsSc
 
 const Drawer = createDrawerNavigator();
 
-export default function HospitalDrawerNavigator({ navigation }) {
+const HeaderLeft = () => {
+    const navigation = useNavigation();
+    return (
+        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.toggleDrawer())} style={styles.menuButton}>
+            <Ionicons name="menu" size={28} color="#333" />
+        </TouchableOpacity>
+    );
+};
+
+const HeaderRight = () => {
+    const navigation = useNavigation();
+    return (
+        <TouchableOpacity style={styles.profileButton} onPress={() => navigation.navigate('HospitalSettingsScreen')}>
+            <View style={styles.avatarPlaceholder}>
+                <Ionicons name="business" size={18} color="#FFF" />
+            </View>
+        </TouchableOpacity>
+    );
+};
+
+export default function HospitalDrawerNavigator() {
     return (
         <Drawer.Navigator
             initialRouteName="HospitalHome"
@@ -28,18 +49,8 @@ export default function HospitalDrawerNavigator({ navigation }) {
                     fontWeight: 'bold',
                     color: '#333',
                 },
-                headerLeft: () => (
-                    <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={styles.menuButton}>
-                        <Ionicons name="menu" size={28} color="#333" />
-                    </TouchableOpacity>
-                ),
-                headerRight: () => (
-                    <TouchableOpacity style={styles.profileButton}>
-                        <View style={styles.avatarPlaceholder}>
-                            <Ionicons name="business" size={18} color="#FFF" />
-                        </View>
-                    </TouchableOpacity>
-                ),
+                headerLeft: () => <HeaderLeft />,
+                headerRight: () => <HeaderRight />,
                 drawerActiveTintColor: COLORS.primary,
                 drawerInactiveTintColor: '#333',
                 drawerStyle: {

@@ -95,7 +95,7 @@ export default function DoctorDashboard({ navigation }) {
 
    const openNewMeet = () => { setModalVisible(false); setShowMeetModal(true); };
    const openAddPatient = () => { setModalVisible(false); navigation.navigate('DoctorAddPatientScreen'); };
-   const openUpload = () => { setModalVisible(false); navigation.navigate('DoctorQuickUploadScreen'); };
+   const openUpload = () => { setModalVisible(false); navigation.navigate('DoctorUploadScreen'); };
    const openDictateNotes = () => { setModalVisible(false); navigation.navigate('DoctorDictateNotesScreen'); };
 
    return (

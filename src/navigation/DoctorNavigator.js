@@ -21,6 +21,7 @@ import AppointmentDetailScreen from '../screens/patient/AppointmentDetailScreen'
 
 // Tools & Schedule
 import DoctorQuickUploadScreen from '../screens/doctor/DoctorQuickUploadScreen';
+import DoctorUploadScreen from '../screens/doctor/DoctorUploadScreen';
 import DoctorAnalyzedResultScreen from '../screens/doctor/DoctorAnalyzedResultScreen';
 import DoctorDictateNotesScreen from '../screens/doctor/DoctorDictateNotesScreen';
 import DoctorAIChatScreen from '../screens/doctor/DoctorAIChatScreen';
@@ -100,6 +101,7 @@ export default function DoctorNavigator() {
 
       {/* 4. Clinical Tools */}
       <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
+      <Stack.Screen name="DoctorUploadScreen" component={DoctorUploadScreen} />
       <Stack.Screen name="DoctorQuickUploadScreen" component={DoctorQuickUploadScreen} />
       <Stack.Screen name="DoctorAnalyzedResultScreen" component={DoctorAnalyzedResultScreen} />
       <Stack.Screen name="DoctorDictateNotesScreen" component={DoctorDictateNotesScreen} />

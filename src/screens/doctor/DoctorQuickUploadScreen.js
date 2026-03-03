@@ -204,6 +204,16 @@ export default function DoctorQuickUploadScreen({ navigation, route }) {
                         onPress={handleAnalyze}
                         disabled={uploading || !selectedFile}
                     />
+
+                    {patient && (
+                        <TouchableOpacity
+                            style={styles.viewDocsBtn}
+                            onPress={() => navigation.navigate('DoctorPatientDetailScreen', { patient, initialTab: 'Documents' })}
+                        >
+                            <Ionicons name="documents-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                            <Text style={styles.viewDocsText}>View Patient Documents</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
             </View>
@@ -238,5 +248,7 @@ const styles = StyleSheet.create({
     subLabel: { fontSize: 12, color: '#666', marginBottom: 8 },
     dropdown: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderRadius: 10, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: '#EEE', marginBottom: 20 },
 
-    footer: { marginTop: 'auto' }
+    footer: { marginTop: 'auto' },
+    viewDocsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 15, paddingVertical: 10 },
+    viewDocsText: { color: COLORS.primary, fontSize: 15, fontWeight: '600' }
 });

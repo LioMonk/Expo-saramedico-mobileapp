@@ -36,7 +36,8 @@ export default {
                 {
                     "android": {
                         "minSdkVersion": 28,
-                        "newArchEnabled": false
+                        "newArchEnabled": true,
+                        "ndkVersion": "27.1.12297006"
                     }
                 }
             ],

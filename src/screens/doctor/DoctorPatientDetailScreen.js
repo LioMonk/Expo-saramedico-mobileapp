@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../../constants/theme';
 import { doctorAPI } from '../../services/api';
+import DoctorAIChatScreen from './DoctorAIChatScreen';
 
 export default function DoctorPatientDetailScreen({ route, navigation }) {
-  const { patient, patientId } = route.params || {};
-  const [activeTab, setActiveTab] = useState('Visits');
+  const { patient, patientId, initialTab } = route.params || {};
+  const [activeTab, setActiveTab] = useState(initialTab || 'Visits');
+  const patientObj = patient || {};
+  const resolvedPatientId = patientId || patientObj?.id;
   const [loading, setLoading] = useState(false);
   const [visits, setVisits] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -115,6 +119,13 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
           >
             <Text style={[styles.tabText, activeTab === 'Documents' && styles.activeTabText]}>Documents</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'AIChat' && styles.activeTab]}
+            onPress={() => setActiveTab('AIChat')}
+          >
+            <Text style={[styles.tabText, activeTab === 'AIChat' && styles.activeTabText]}>AI Chat</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Pending Appointments Section */}
@@ -195,8 +206,21 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
               loading={loading}
               patient={patient}
             />
+          ) : activeTab === 'Documents' ? (
+            <DocumentsView
+              documents={documents}
+              loading={loading}
+              onUpload={() => navigation.navigate('DoctorQuickUploadScreen', { patient: patientObj })}
+              onDeleteSuccess={loadPatientDetails}
+            />
           ) : (
-            <DocumentsView documents={documents} loading={loading} />
+            <View style={{ flex: 1 }}>
+              <DoctorAIChatScreen
+                navigation={navigation}
+                route={{ params: { patientId: resolvedPatientId } }}
+                embedded={true}
+              />
+            </View>
           )}
         </View>
 
@@ -206,8 +230,6 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
 }
 
 // --- SUB-COMPONENTS ---
-
-import * as WebBrowser from 'expo-web-browser';
 
 function VisitsView({ navigation, visits, upcomingAppointments, loading, patient }) {
   if (loading) {
@@ -280,12 +302,20 @@ function VisitsView({ navigation, visits, upcomingAppointments, loading, patient
                 <Text style={styles.visitDate}>
                   {visit.scheduled_at || visit.visit_date || visit.created_at || 'No date'}
                 </Text>
-                <TouchableOpacity
-                  style={styles.viewBtn}
-                  onPress={() => navigation.navigate('DoctorPostVisitScreen', { patient, visit })}
-                >
-                  <Text style={styles.viewBtnText}>View</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={styles.viewBtn}
+                    onPress={() => navigation.navigate('DoctorPostVisitScreen', { patient, visit })}
+                  >
+                    <Text style={styles.viewBtnText}>View</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewBtn, { backgroundColor: '#E8F5E9' }]}
+                    onPress={() => navigation.navigate('DoctorPostVisitScreen', { patient, visit, showSoap: true })}
+                  >
+                    <Text style={[styles.viewBtnText, { color: '#2E7D32' }]}>SOAP</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               <Text style={styles.visitTitle}>{visit.visit_type || visit.reason || 'General Visit'}</Text>
               <Text style={styles.visitDesc} numberOfLines={3}>
@@ -300,7 +330,7 @@ function VisitsView({ navigation, visits, upcomingAppointments, loading, patient
   );
 }
 
-function DocumentsView({ documents, loading }) {
+function DocumentsView({ documents, loading, onUpload, onDeleteSuccess }) {
   if (loading) {
     return (
       <View style={{ padding: 40, alignItems: 'center' }}>
@@ -311,41 +341,93 @@ function DocumentsView({ documents, loading }) {
 
   const docsList = Array.isArray(documents) ? documents : [];
 
-  if (docsList.length === 0) {
-    return (
-      <View style={{ padding: 40, alignItems: 'center' }}>
-        <Ionicons name="document-outline" size={50} color="#DDD" />
-        <Text style={{ marginTop: 15, fontSize: 14, color: '#999' }}>No documents uploaded</Text>
-      </View>
+  const handleDeleteDoc = (docId) => {
+    Alert.alert(
+      "Delete Document",
+      "Are you sure you want to delete this document?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await doctorAPI.deleteDocument(docId);
+              Alert.alert('Success', 'Document deleted successfully');
+              if (onDeleteSuccess) onDeleteSuccess();
+            } catch (error) {
+              console.error('Delete error:', error);
+              Alert.alert('Error', 'Failed to delete document');
+            }
+          }
+        }
+      ]
     );
-  }
+  };
+
+  const handleOpenDoc = async (doc) => {
+    const url = doc.presigned_url || doc.file_url || doc.url;
+    if (!url) {
+      Alert.alert('Unavailable', 'Document URL is not available.');
+      return;
+    }
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch (e) {
+      Alert.alert('Error', 'Could not open document.');
+    }
+  };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
+      {/* Upload Button */}
+      <TouchableOpacity style={styles.uploadDocBtn} onPress={onUpload}>
+        <Ionicons name="cloud-upload-outline" size={18} color="white" />
+        <Text style={styles.uploadDocBtnText}>Upload Document</Text>
+      </TouchableOpacity>
+
       <Text style={styles.sectionLabel}>UPLOADED DOCUMENTS</Text>
 
-      {docsList.map((doc, index) => (
-        <DocumentItem
-          key={doc.id || index}
-          title={doc.title || doc.filename || 'Document'}
-          sub={`Uploaded ${doc.uploaded_at || doc.created_at || 'Unknown date'}`}
-        />
-      ))}
+      {docsList.length === 0 ? (
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <Ionicons name="document-outline" size={50} color="#DDD" />
+          <Text style={{ marginTop: 15, fontSize: 14, color: '#999' }}>No documents uploaded</Text>
+        </View>
+      ) : (
+        docsList.map((doc, index) => (
+          <DocumentItem
+            key={doc.id || index}
+            title={doc.title || doc.file_name || doc.filename || 'Document'}
+            sub={`Uploaded ${doc.uploaded_at || doc.created_at || 'Unknown date'}`}
+            category={doc.category}
+            onPress={() => handleOpenDoc(doc)}
+            onDelete={() => handleDeleteDoc(doc.id)}
+          />
+        ))
+      )}
     </ScrollView>
   );
 }
 
-const DocumentItem = ({ title, sub }) => (
-  <TouchableOpacity style={styles.docItem}>
-    <View style={styles.pdfIcon}>
-      <Ionicons name="document-text" size={24} color="#E53935" />
-    </View>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.docTitle}>{title}</Text>
-      <Text style={styles.docSub}>{sub}</Text>
-    </View>
-    <Ionicons name="eye-outline" size={20} color="#999" />
-  </TouchableOpacity>
+const DocumentItem = ({ title, sub, category, onPress, onDelete }) => (
+  <View style={styles.docItemWrapper}>
+    <TouchableOpacity style={[styles.docItem, { marginBottom: 0, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} onPress={onPress}>
+      <View style={styles.pdfIcon}>
+        <Ionicons name="document-text" size={24} color="#E53935" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.docTitle}>{title}</Text>
+        <Text style={styles.docSub}>{sub}</Text>
+        {category && (
+          <Text style={styles.docCategory}>{category.replace(/_/g, ' ')}</Text>
+        )}
+      </View>
+      <Ionicons name="eye-outline" size={20} color={COLORS.primary} />
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
+      <Ionicons name="trash-outline" size={20} color="#E53935" />
+    </TouchableOpacity>
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -377,10 +459,15 @@ const styles = StyleSheet.create({
   visitTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 6 },
   visitDesc: { fontSize: 13, color: '#555', lineHeight: 18 },
 
-  docItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#EEE' },
+  uploadDocBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, borderRadius: 12, padding: 14, marginBottom: 20, gap: 8 },
+  uploadDocBtnText: { color: 'white', fontWeight: 'bold', fontSize: 15 },
+  docItemWrapper: { flexDirection: 'row', marginBottom: 10, borderRadius: 12, borderWidth: 1, borderColor: '#EEE', backgroundColor: 'white' },
+  docItem: { flexDirection: 'row', alignItems: 'center', padding: 15 },
+  deleteBtn: { padding: 15, justifyContent: 'center', alignItems: 'center', borderLeftWidth: 1, borderColor: '#EEE' },
   pdfIcon: { width: 40, height: 40, backgroundColor: '#FFEBEE', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   docTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
   docSub: { fontSize: 12, color: '#999', marginTop: 2 },
+  docCategory: { fontSize: 11, color: COLORS.primary, marginTop: 3, fontWeight: '600', textTransform: 'uppercase' },
 
   pendingContainer: { marginBottom: 20 },
   pendingCard: { backgroundColor: '#FFF3E0', borderRadius: 12, padding: 15, borderWidth: 1, borderColor: '#FFE0B2', marginBottom: 10 },
