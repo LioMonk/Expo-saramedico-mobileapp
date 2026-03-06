@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { teamAPI } from '../../services/api';
+import { teamAPI, hospitalAPI } from '../../services/api';
 
 export default function HospitalTeamScreen({ navigation }) {
     const [loading, setLoading] = useState(true);
@@ -28,13 +28,12 @@ export default function HospitalTeamScreen({ navigation }) {
         try {
             setLoading(true);
 
-            // Load team members
+            // Load team members — use /team/staff (confirmed working ✅)
             try {
-                const membersRes = await teamAPI.getTeamMembers();
+                const membersRes = await hospitalAPI.getStaff();
                 setTeamMembers(membersRes.data || []);
             } catch (e) {
                 console.log('Team members not available:', e.message);
-                // Use empty array on failure
                 setTeamMembers([]);
             }
 

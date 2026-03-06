@@ -37,7 +37,7 @@ export default function DoctorUploadScreen({ navigation }) {
     setLoading(true);
     try {
       const response = await doctorAPI.getPatients();
-      const data = response.data?.patients || response.data || [];
+      const data = response.data?.all_patients || response.data?.patients || (Array.isArray(response.data) ? response.data : []) || [];
       setPatients(data);
       setFiltered(data);
     } catch (error) {

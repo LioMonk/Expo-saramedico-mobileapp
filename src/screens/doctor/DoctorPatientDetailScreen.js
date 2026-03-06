@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,10 +10,10 @@ import { doctorAPI } from '../../services/api';
 import DoctorAIChatScreen from './DoctorAIChatScreen';
 
 export default function DoctorPatientDetailScreen({ route, navigation }) {
-  const { patient, patientId, initialTab } = route.params || {};
+  const [patient, setPatient] = useState(route.params?.patient || {});
+  const { patientId, initialTab } = route.params || {};
   const [activeTab, setActiveTab] = useState(initialTab || 'Visits');
-  const patientObj = patient || {};
-  const resolvedPatientId = patientId || patientObj?.id;
+  const resolvedPatientId = patientId || patient?.id || patient?.patient_id;
   const [loading, setLoading] = useState(false);
   const [visits, setVisits] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -22,16 +22,26 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
   const [processingId, setProcessingId] = useState(null);
 
   useEffect(() => {
-    if (patientId || patient?.id) {
+    if (resolvedPatientId) {
       loadPatientDetails();
     }
-  }, [patientId, patient?.id]);
+  }, [resolvedPatientId]);
 
   const loadPatientDetails = async () => {
     setLoading(true);
-    const id = patientId || patient?.id;
+    const id = resolvedPatientId;
+    if (!id) { setLoading(false); return; }
 
     try {
+      // 1. Fetch patient profile details
+      try {
+        const profileRes = await doctorAPI.getPatientDetails(id);
+        if (profileRes.data) {
+          setPatient(profileRes.data);
+        }
+      } catch (err) {
+        console.log('Error fetching patient profile:', err);
+      }
       // Load visits/records
       try {
         const visitsResponse = await doctorAPI.getRecords(id);
@@ -100,8 +110,8 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
               <Ionicons name="person" size={40} color="#999" />
             </View>
           </View>
-          <Text style={styles.patientName}>{patient?.name || 'Unknown Patient'}</Text>
-          <Text style={styles.patientMeta}>MRN: {patient?.mrn || 'N/A'} - DOB: {patient?.dob || 'N/A'}</Text>
+          <Text style={styles.patientName}>{patient?.full_name || patient?.name || 'Patient'}</Text>
+          <Text style={styles.patientMeta}>MRN: {patient?.mrn || 'N/A'} - DOB: {patient?.date_of_birth || patient?.dob || (patient?.age ? `${patient.age} yrs` : 'N/A')}</Text>
         </View>
 
         {/* Tab Switcher */}
@@ -210,7 +220,8 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
             <DocumentsView
               documents={documents}
               loading={loading}
-              onUpload={() => navigation.navigate('DoctorQuickUploadScreen', { patient: patientObj })}
+              patientId={resolvedPatientId}
+              onUpload={() => navigation.navigate('DoctorQuickUploadScreen', { patient: patient })}
               onDeleteSuccess={loadPatientDetails}
             />
           ) : (
@@ -330,7 +341,96 @@ function VisitsView({ navigation, visits, upcomingAppointments, loading, patient
   );
 }
 
-function DocumentsView({ documents, loading, onUpload, onDeleteSuccess }) {
+function DocumentsView({ documents, loading, patientId, onUpload, onDeleteSuccess }) {
+  const [hr, setHr] = useState('');
+  const [bp, setBp] = useState('');
+  const [weight, setWeight] = useState('');
+  const [savingVitals, setSavingVitals] = useState(false);
+  const [loadingVitals, setLoadingVitals] = useState(true);
+  const [lastVitals, setLastVitals] = useState({ hr: null, bp: null, weight: null });
+  const [isVitalsExpanded, setIsVitalsExpanded] = useState(false);
+
+  // Load last recorded vitals to pre-fill fields
+  useEffect(() => {
+    if (!patientId) return;
+    const fetchVitals = async () => {
+      setLoadingVitals(true);
+      try {
+        // Use the patients GET endpoint – works for doctors too
+        const api = require('../../services/api').default;
+        const res = await api.get(`/patients/${patientId}/health`, { params: { limit: 20 } });
+        const metrics = Array.isArray(res.data) ? res.data : [];
+        // Get most recent of each type
+        const latest = {};
+        metrics.forEach(m => {
+          if (!latest[m.metric_type]) latest[m.metric_type] = m;
+        });
+        const lastHr = latest['heart_rate']?.value || '';
+        const lastBp = latest['blood_pressure']?.value || '';
+        const lastW = latest['weight']?.value || '';
+        setHr(lastHr);
+        setBp(lastBp);
+        setWeight(lastW);
+        setLastVitals({
+          hr: latest['heart_rate'] ? `${latest['heart_rate'].value} bpm` : null,
+          bp: latest['blood_pressure'] ? `${latest['blood_pressure'].value} mmHg` : null,
+          weight: latest['weight'] ? `${latest['weight'].value} kg` : null,
+          hrTime: latest['heart_rate']?.recorded_at,
+          bpTime: latest['blood_pressure']?.recorded_at,
+          wTime: latest['weight']?.recorded_at,
+        });
+      } catch (e) {
+        console.log('Could not load vitals:', e.message);
+      } finally {
+        setLoadingVitals(false);
+      }
+    };
+    fetchVitals();
+  }, [patientId]);
+
+  const formatTime = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' ' +
+      d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  const saveVitals = async () => {
+    if (!hr && !bp && !weight) {
+      Alert.alert('No Data', 'Please fill in at least one vital sign.');
+      return;
+    }
+    if (!patientId) {
+      Alert.alert('Error', 'Patient ID not found.');
+      return;
+    }
+    setSavingVitals(true);
+    const now = new Date().toISOString();
+    const tasks = [];
+    if (hr) tasks.push(doctorAPI.addHealthMetric(patientId, { metric_type: 'heart_rate', value: hr, unit: 'bpm', recorded_at: now }));
+    if (bp) tasks.push(doctorAPI.addHealthMetric(patientId, { metric_type: 'blood_pressure', value: bp, unit: 'mmHg', recorded_at: now }));
+    if (weight) tasks.push(doctorAPI.addHealthMetric(patientId, { metric_type: 'weight', value: weight, unit: 'kg', recorded_at: now }));
+
+    try {
+      await Promise.all(tasks);
+      // Update last vitals display
+      setLastVitals({
+        hr: hr ? `${hr} bpm` : lastVitals.hr,
+        bp: bp ? `${bp} mmHg` : lastVitals.bp,
+        weight: weight ? `${weight} kg` : lastVitals.weight,
+        hrTime: hr ? now : lastVitals.hrTime,
+        bpTime: bp ? now : lastVitals.bpTime,
+        wTime: weight ? now : lastVitals.wTime,
+      });
+      Alert.alert('✅ Saved', 'Vitals recorded successfully.');
+    } catch (err) {
+      console.error('Vitals save error:', err);
+      Alert.alert('Error', 'Failed to save vitals. Please try again.');
+    } finally {
+      setSavingVitals(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={{ padding: 40, alignItems: 'center' }}>
@@ -356,7 +456,6 @@ function DocumentsView({ documents, loading, onUpload, onDeleteSuccess }) {
               Alert.alert('Success', 'Document deleted successfully');
               if (onDeleteSuccess) onDeleteSuccess();
             } catch (error) {
-              console.error('Delete error:', error);
               Alert.alert('Error', 'Failed to delete document');
             }
           }
@@ -367,19 +466,155 @@ function DocumentsView({ documents, loading, onUpload, onDeleteSuccess }) {
 
   const handleOpenDoc = async (doc) => {
     const url = doc.presigned_url || doc.file_url || doc.url;
-    if (!url) {
-      Alert.alert('Unavailable', 'Document URL is not available.');
-      return;
-    }
-    try {
-      await WebBrowser.openBrowserAsync(url);
-    } catch (e) {
-      Alert.alert('Error', 'Could not open document.');
-    }
+    if (!url) { Alert.alert('Unavailable', 'Document URL is not available.'); return; }
+    try { await WebBrowser.openBrowserAsync(url); }
+    catch (e) { Alert.alert('Error', 'Could not open document.'); }
   };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
+
+      {/* ══ VITALS CARD ══════════════════════════════════════════ */}
+      <View style={styles.vitalsCard}>
+        {/* Header - Now Touchable to Toggle */}
+        <TouchableOpacity
+          style={styles.vitalsCardHeader}
+          onPress={() => setIsVitalsExpanded(!isVitalsExpanded)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.vitalsCardHeaderLeft}>
+            <View style={styles.vitalsCardIconBox}>
+              <Ionicons name="pulse" size={20} color={COLORS.primary} />
+            </View>
+            <View>
+              <Text style={styles.vitalsCardTitle}>Record Vitals</Text>
+              <Text style={styles.vitalsCardSub}>
+                {loadingVitals ? 'Loading last readings...' : 'Current patient health metrics'}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {loadingVitals && <ActivityIndicator size="small" color={COLORS.primary} />}
+            <Ionicons
+              name={isVitalsExpanded ? "chevron-up" : "chevron-down"}
+              size={24}
+              color="#666"
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Collapsible Content */}
+        {isVitalsExpanded && (
+          <View>
+            {/* Metric Tiles Row: HR + BP */}
+            <View style={styles.vitalsRow}>
+
+              {/* Heart Rate Tile */}
+              <View style={[styles.vitalsTile, { borderColor: '#FFCDD2', backgroundColor: '#FFF8F8' }]}>
+                <View style={styles.vitalsTileTop}>
+                  <View style={[styles.vitalsTileIcon, { backgroundColor: '#FFEBEE' }]}>
+                    <Ionicons name="heart" size={16} color="#E53935" />
+                  </View>
+                  <Text style={[styles.vitalsTileLabel, { color: '#E53935' }]}>Heart Rate</Text>
+                </View>
+                {lastVitals.hr && (
+                  <View style={styles.vitalsLastRow}>
+                    <Text style={styles.vitalsLastValue}>{lastVitals.hr}</Text>
+                    {lastVitals.hrTime && (
+                      <Text style={styles.vitalsLastTime}>{formatTime(lastVitals.hrTime)}</Text>
+                    )}
+                  </View>
+                )}
+                <View style={styles.vitalsInputWrap}>
+                  <TextInput
+                    style={styles.vitalsInput}
+                    placeholder={lastVitals.hr ? lastVitals.hr.replace(' bpm', '') : '72'}
+                    placeholderTextColor="#BDBDBD"
+                    keyboardType="numeric"
+                    value={hr}
+                    onChangeText={setHr}
+                  />
+                  <Text style={styles.vitalsUnit}>bpm</Text>
+                </View>
+              </View>
+
+              {/* Blood Pressure Tile */}
+              <View style={[styles.vitalsTile, { borderColor: '#E1BEE7', backgroundColor: '#FDF7FF' }]}>
+                <View style={styles.vitalsTileTop}>
+                  <View style={[styles.vitalsTileIcon, { backgroundColor: '#F3E5F5' }]}>
+                    <Ionicons name="fitness" size={16} color="#8E24AA" />
+                  </View>
+                  <Text style={[styles.vitalsTileLabel, { color: '#8E24AA' }]}>Blood Pressure</Text>
+                </View>
+                {lastVitals.bp && (
+                  <View style={styles.vitalsLastRow}>
+                    <Text style={styles.vitalsLastValue}>{lastVitals.bp}</Text>
+                    {lastVitals.bpTime && (
+                      <Text style={styles.vitalsLastTime}>{formatTime(lastVitals.bpTime)}</Text>
+                    )}
+                  </View>
+                )}
+                <View style={styles.vitalsInputWrap}>
+                  <TextInput
+                    style={styles.vitalsInput}
+                    placeholder={lastVitals.bp ? lastVitals.bp.replace(' mmHg', '') : '120/80'}
+                    placeholderTextColor="#BDBDBD"
+                    value={bp}
+                    onChangeText={setBp}
+                  />
+                  <Text style={styles.vitalsUnit}>mmHg</Text>
+                </View>
+              </View>
+
+            </View>
+
+            {/* Weight Tile (full width) */}
+            <View style={[styles.vitalsTile, { borderColor: '#BBDEFB', backgroundColor: '#F7FBFF', marginTop: 10 }]}>
+              <View style={styles.vitalsTileTop}>
+                <View style={[styles.vitalsTileIcon, { backgroundColor: '#E3F2FD' }]}>
+                  <Ionicons name="barbell" size={16} color="#1976D2" />
+                </View>
+                <Text style={[styles.vitalsTileLabel, { color: '#1976D2' }]}>Weight</Text>
+                {lastVitals.weight && (
+                  <View style={[styles.vitalsLastRow, { marginLeft: 'auto' }]}>
+                    <Text style={styles.vitalsLastValue}>{lastVitals.weight}</Text>
+                    {lastVitals.wTime && (
+                      <Text style={[styles.vitalsLastTime, { marginLeft: 6 }]}>{formatTime(lastVitals.wTime)}</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+              <View style={[styles.vitalsInputWrap, { width: '55%', marginTop: 10 }]}>
+                <TextInput
+                  style={styles.vitalsInput}
+                  placeholder={lastVitals.weight ? lastVitals.weight.replace(' kg', '') : '70.5'}
+                  placeholderTextColor="#BDBDBD"
+                  keyboardType="numeric"
+                  value={weight}
+                  onChangeText={setWeight}
+                />
+                <Text style={styles.vitalsUnit}>kg</Text>
+              </View>
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={[styles.vitalsSaveBtn, savingVitals && { opacity: 0.7 }]}
+              onPress={saveVitals}
+              disabled={savingVitals}
+            >
+              {savingVitals
+                ? <ActivityIndicator size="small" color="white" />
+                : <Ionicons name="checkmark-circle" size={18} color="white" />
+              }
+              <Text style={styles.vitalsSaveBtnText}>
+                {savingVitals ? 'Saving...' : 'Save Vitals'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
       {/* Upload Button */}
       <TouchableOpacity style={styles.uploadDocBtn} onPress={onUpload}>
         <Ionicons name="cloud-upload-outline" size={18} color="white" />
@@ -405,9 +640,11 @@ function DocumentsView({ documents, loading, onUpload, onDeleteSuccess }) {
           />
         ))
       )}
+      <View style={{ height: 20 }} />
     </ScrollView>
   );
 }
+
 
 const DocumentItem = ({ title, sub, category, onPress, onDelete }) => (
   <View style={styles.docItemWrapper}>
@@ -480,4 +717,75 @@ const styles = StyleSheet.create({
   rejectBtn: { backgroundColor: '#EEEEEE' },
   approveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
   rejectBtnText: { color: '#F44336', fontWeight: 'bold', fontSize: 14 },
+
+  // ── Vitals Card ──────────────────────────────────────────────────────────
+  vitalsCard: {
+    backgroundColor: 'white',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  vitalsCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  vitalsCardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  vitalsCardIconBox: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: '#EBF5FF',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  vitalsCardTitle: { fontSize: 15, fontWeight: '700', color: '#1A1A1A' },
+  vitalsCardSub: { fontSize: 11, color: '#888', marginTop: 1 },
+
+  vitalsRow: { flexDirection: 'row', gap: 10 },
+
+  vitalsTile: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  vitalsTileTop: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  vitalsTileIcon: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  vitalsTileLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+
+  vitalsLastRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 6, gap: 4 },
+  vitalsLastValue: { fontSize: 18, fontWeight: '800', color: '#1A1A1A' },
+  vitalsLastTime: { fontSize: 10, color: '#aaa', marginTop: 2 },
+
+  vitalsInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F7F8FA',
+    borderWidth: 1,
+    borderColor: '#DDE1E7',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 42,
+    marginTop: 10,
+  },
+  vitalsInput: { flex: 1, fontSize: 15, color: '#1A1A1A' },
+  vitalsUnit: { fontSize: 11, color: '#999', marginLeft: 4 },
+  vitalsLabel: { fontSize: 12, fontWeight: '600', color: '#555', marginBottom: 6 },
+  vitalsField: { flex: 1 },
+
+  vitalsSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 18,
+    gap: 8,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  vitalsSaveBtnText: { color: 'white', fontWeight: '700', fontSize: 15 },
 });

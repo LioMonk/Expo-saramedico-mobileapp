@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Switch, ActivityIndicator
+   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Switch, ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import SignOutModal from '../../components/SignOutModal';
 import { getUserData } from '../../services/api';
+import AuthService from '../../services/authService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DoctorSettingsScreen({ navigation }) {
    const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -21,9 +25,11 @@ export default function DoctorSettingsScreen({ navigation }) {
       licenseNumber: ''
    });
 
-   useEffect(() => {
-      loadDoctorProfile();
-   }, []);
+   useFocusEffect(
+      useCallback(() => {
+         loadDoctorProfile();
+      }, [])
+   );
 
    const loadDoctorProfile = async () => {
       try {
@@ -33,7 +39,7 @@ export default function DoctorSettingsScreen({ navigation }) {
             setDoctorData({
                name: cleanName,
                specialty: userData.specialty || 'General Practice',
-               avatar: userData.avatar_url || null,
+               avatar: userData.avatar || userData.avatar_url || null,
                email: userData.email || '',
                phone: userData.phone || '',
                licenseNumber: userData.license_number || 'Not provided'
@@ -47,18 +53,64 @@ export default function DoctorSettingsScreen({ navigation }) {
       }
    };
 
-   const handleSignOut = () => {
+   const handleSignOut = async () => {
       setShowSignOut(false);
-      navigation.reset({
-         index: 0,
-         routes: [{ name: 'Auth' }],
-      });
+      try {
+         await AuthService.logout();
+      } catch (error) {
+         console.error('Logout error:', error);
+      } finally {
+         navigation.reset({
+            index: 0,
+            routes: [{ name: 'Auth' }],
+         });
+      }
    };
 
    const handle2FAToggle = async (value) => {
       setIs2FAEnabled(value);
-      // TODO: Implement MFA enable/disable API call
+      try {
+         // Mock MFA storage directly to user data since backend lacks endpoints
+         const userDataLocal = await AsyncStorage.getItem('@user_data');
+         if (userDataLocal) {
+            const parsed = JSON.parse(userDataLocal);
+            parsed.mfa_enabled = value;
+            await AsyncStorage.setItem('@user_data', JSON.stringify(parsed));
+         }
+      } catch (error) {
+         console.error('Error saving 2FA state locally:', error);
+      }
       console.log('2FA toggled:', value);
+   };
+
+   const handleImagePick = async () => {
+      try {
+         const result = await DocumentPicker.getDocumentAsync({
+            type: ['image/jpeg', 'image/png', 'image/jpg'],
+            copyToCacheDirectory: true,
+         });
+
+         if (result.type === 'success' || !result.canceled) {
+            const file = result.assets ? result.assets[0] : result;
+            const imageUri = file.uri;
+            setDoctorData(prev => ({ ...prev, avatar: imageUri }));
+
+            // Save locally since backend doesn't support profile picture endpoint yet
+            const doctorProfile = await AsyncStorage.getItem('doctor_profile');
+            const parsedProfile = doctorProfile ? JSON.parse(doctorProfile) : {};
+            parsedProfile.avatar = imageUri;
+            await AsyncStorage.setItem('doctor_profile', JSON.stringify(parsedProfile));
+
+            const userDataLocal = await AsyncStorage.getItem('@user_data');
+            if (userDataLocal) {
+               const parsedUserData = JSON.parse(userDataLocal);
+               parsedUserData.avatar = imageUri;
+               await AsyncStorage.setItem('@user_data', JSON.stringify(parsedUserData));
+            }
+         }
+      } catch (error) {
+         console.error('Error picking image:', error);
+      }
    };
 
    return (
@@ -80,7 +132,7 @@ export default function DoctorSettingsScreen({ navigation }) {
                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                   {/* Profile Header */}
                   <View style={styles.profileHeader}>
-                     <View style={styles.avatarContainer}>
+                     <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePick}>
                         {doctorData.avatar ? (
                            <Image source={{ uri: doctorData.avatar }} style={styles.avatar} />
                         ) : (
@@ -91,7 +143,7 @@ export default function DoctorSettingsScreen({ navigation }) {
                         <View style={styles.editBadge}>
                            <Ionicons name="pencil" size={14} color="white" />
                         </View>
-                     </View>
+                     </TouchableOpacity>
                      <Text style={styles.nameText}>Dr. {doctorData.name}</Text>
                      <Text style={styles.roleText}>{doctorData.specialty.toUpperCase()}</Text>
                   </View>

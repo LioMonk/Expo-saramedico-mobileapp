@@ -14,7 +14,10 @@ class ErrorHandler {
      * @returns {Object} - { message, statusCode, shouldLogout }
      */
     static handleError(error) {
-        console.error('API Error:', error);
+        // Do not log 404s as full errors to avoid terminal noise for missing endpoints
+        if (error.response?.status !== 404) {
+            console.error('API Error:', error);
+        }
 
         // Network error (no response from server)
         if (!error.response) {

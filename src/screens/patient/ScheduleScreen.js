@@ -5,22 +5,45 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Calendar } from 'react-native-calendars';
 import { COLORS } from '../../constants/theme';
 import BottomNavBar from '../../components/BottomNavBar';
-import { patientAPI } from '../../services/api';
+import { patientAPI, calendarAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 
 export default function ScheduleScreen({ navigation }) {
   const [appointments, setAppointments] = useState([]);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // View & Filter State
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'appointments', 'events'
+
+  // Event Modal State
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [eventForm, setEventForm] = useState({
+    id: null,
+    title: '',
+    description: '',
+    start_time: new Date(),
+    end_time: new Date(Date.now() + 3600000)
+  });
+  const [pickerConfig, setPickerConfig] = useState({ show: false, field: 'start', mode: 'date' });
 
   useEffect(() => {
     loadAppointments();
@@ -30,26 +53,22 @@ export default function ScheduleScreen({ navigation }) {
     if (!isRefreshing) setLoading(true);
 
     try {
-      const response = await patientAPI.getMyAppointments();
-      const allAppointments = response.data || [];
-
-      // Filter out past accepted appointments
       const now = new Date();
-      const filteredAppointments = allAppointments.filter(appointment => {
-        const appointmentDate = new Date(appointment.requested_date);
+      const startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      const endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
 
-        // Keep all pending and declined appointments (for history)
-        if (appointment.status !== 'accepted') {
-          return true;
-        }
+      const [appointmentsRes, eventsRes] = await Promise.all([
+        patientAPI.getMyAppointments(),
+        calendarAPI.getEvents({
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString()
+        }).catch(() => ({ data: [] }))
+      ]);
 
-        // For accepted appointments, only show current or future ones
-        return appointmentDate >= now;
-      });
-
-      setAppointments(filteredAppointments);
+      setAppointments(appointmentsRes.data || []);
+      setCalendarEvents(eventsRes.data?.events || eventsRes.data || []);
     } catch (error) {
-      console.error('Failed to load appointments:', error);
+      console.error('Failed to load schedule:', error);
       const errorInfo = ErrorHandler.handleError(error);
       if (!isRefreshing) {
         Alert.alert('Error', errorInfo.message);
@@ -58,6 +77,107 @@ export default function ScheduleScreen({ navigation }) {
       setLoading(false);
       if (isRefreshing) setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    let items = [];
+
+    // Process Appointments
+    appointments.forEach(appt => {
+      const date = new Date(appt.requested_date || appt.appointment_date || appt.scheduled_at);
+      if (isNaN(date.getTime())) return;
+
+      // Filter by tab
+      if (activeTab === 'events') return;
+
+      // Filter by date
+      if (selectedDate && (
+        date.getFullYear() !== selectedDate.getFullYear() ||
+        date.getMonth() !== selectedDate.getMonth() ||
+        date.getDate() !== selectedDate.getDate()
+      )) return;
+
+      items.push({
+        ...appt,
+        itemType: 'appointment',
+        sortDate: date
+      });
+    });
+
+    // Process Manual Events
+    calendarEvents.forEach(evt => {
+      if (evt.event_type === 'appointment' || evt.appointment_id) return;
+
+      const date = new Date(evt.start_time || evt.event_date);
+      if (isNaN(date.getTime())) return;
+
+      // Filter by tab
+      if (activeTab === 'appointments') return;
+
+      // Filter by date
+      if (selectedDate && (
+        date.getFullYear() !== selectedDate.getFullYear() ||
+        date.getMonth() !== selectedDate.getMonth() ||
+        date.getDate() !== selectedDate.getDate()
+      )) return;
+
+      items.push({
+        ...evt,
+        itemType: 'calendar_event',
+        sortDate: date
+      });
+    });
+
+    // Sort: earliest first
+    items.sort((a, b) => a.sortDate - b.sortDate);
+    setFilteredItems(items);
+  }, [appointments, calendarEvents, selectedDate, activeTab]);
+
+  const handleSaveEvent = async () => {
+    if (!eventForm.title.trim()) return Alert.alert('Error', 'Title is required');
+
+    setLoading(true);
+    try {
+      const payload = {
+        title: eventForm.title,
+        description: eventForm.description,
+        start_time: eventForm.start_time.toISOString(),
+        end_time: eventForm.end_time.toISOString(),
+      };
+
+      if (eventForm.id) {
+        await calendarAPI.updateEvent(eventForm.id, payload);
+        Alert.alert('Success', 'Event updated successfully');
+      } else {
+        await calendarAPI.createEvent(payload);
+        Alert.alert('Success', 'Personal event created');
+      }
+      setShowEventModal(false);
+      setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
+      loadAppointments();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save event');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = (id) => {
+    Alert.alert('Delete Event', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await calendarAPI.deleteEvent(id);
+            loadAppointments();
+          } catch (e) {
+            Alert.alert('Error', 'Failed to delete');
+          }
+        }
+      }
+    ]);
   };
 
   const onRefresh = () => {
@@ -80,6 +200,7 @@ export default function ScheduleScreen({ navigation }) {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -89,6 +210,7 @@ export default function ScheduleScreen({ navigation }) {
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Time';
     return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -96,15 +218,115 @@ export default function ScheduleScreen({ navigation }) {
     });
   };
 
-  if (loading) {
+  const renderScheduleItem = (item) => {
+    const isEvent = item.itemType === 'calendar_event';
+    const accentColor = isEvent ? '#9C27B0' : COLORS.primary;
+    const tagLabel = isEvent ? 'PERSONAL EVENT' : 'APPOINTMENT';
+
+    const displayDate = formatDate(item.sortDate);
+    const displayTime = formatTime(item.sortDate);
+
+    return (
+      <View key={`${item.itemType}-${item.id}`} style={styles.sexyCard}>
+        <View style={[styles.sexySide, { backgroundColor: accentColor }]} />
+        <View style={styles.sexyContent}>
+          <View style={styles.sexyHeader}>
+            <View style={styles.sexyBadgesRow}>
+              <View style={[styles.sexyBadge, { backgroundColor: accentColor + '10' }]}>
+                <Ionicons name="calendar-outline" size={12} color={accentColor} />
+                <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayDate}</Text>
+              </View>
+              <View style={[styles.sexyBadge, { backgroundColor: accentColor + '10' }]}>
+                <Ionicons name="time-outline" size={12} color={accentColor} />
+                <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayTime}</Text>
+              </View>
+            </View>
+            <View style={[styles.typeBadge, { backgroundColor: accentColor + '15' }]}>
+              <Text style={[styles.typeBadgeText, { color: accentColor }]}>{tagLabel}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.sexyTitle}>
+            {isEvent ? item.title : `Dr. ${item.doctor_name || 'Doctor'}`}
+          </Text>
+
+          <Text style={styles.sexyDesc} numberOfLines={2}>
+            {isEvent ? item.description : item.reason || 'No reason provided'}
+          </Text>
+
+          <View style={styles.sexyFooter}>
+            {isEvent ? (
+              <View style={styles.eventActions}>
+                <TouchableOpacity style={[styles.eventBtn, { backgroundColor: accentColor }]} onPress={() => {
+                  setEventForm({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    start_time: new Date(item.start_time),
+                    end_time: new Date(item.end_time)
+                  });
+                  setShowEventModal(true);
+                }}>
+                  <Ionicons name="pencil" size={14} color="white" />
+                  <Text style={styles.eventBtnText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteEvent(item.id)}>
+                  <Ionicons name="trash-outline" size={16} color="#FF5252" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              item.status === 'accepted' && item.join_url ? (
+                <TouchableOpacity
+                  style={styles.joinButton}
+                  onPress={() => navigation.navigate('VideoCallScreen', { appointment: item, role: 'patient' })}
+                >
+                  <Ionicons name="videocam" size={18} color="white" />
+                  <Text style={styles.joinButtonText}>Join Call</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[styles.statusTag, { backgroundColor: getStatusStyle(item.status).backgroundColor }]}>
+                  <Text style={[styles.statusTagText, { color: getStatusStyle(item.status).color }]}>
+                    {item.status?.toUpperCase()}
+                  </Text>
+                </View>
+              )
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading appointments...</Text>
+          <Text style={styles.loadingText}>Loading schedule...</Text>
         </View>
       </SafeAreaView>
     );
+  }
+
+  // Pre-calculate marked dates for calendar
+  const markedDates = {};
+  appointments.concat(calendarEvents).forEach(item => {
+    const d = new Date(item.requested_date || item.appointment_date || item.start_time || item.scheduled_at);
+    if (isNaN(d.getTime())) return;
+    const dateStr = d.toISOString().split('T')[0];
+    markedDates[dateStr] = {
+      marked: true,
+      dotColor: item.appointment_id || item.itemType === 'appointment' ? COLORS.primary : '#9C27B0'
+    };
+  });
+
+  if (selectedDate) {
+    const selectedStr = selectedDate.toISOString().split('T')[0];
+    markedDates[selectedStr] = {
+      ...markedDates[selectedStr],
+      selected: true,
+      selectedColor: COLORS.primary
+    };
   }
 
   return (
@@ -116,15 +338,79 @@ export default function ScheduleScreen({ navigation }) {
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>My Schedule</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+              style={styles.headerIconBtn}
+            >
+              <Ionicons name={viewMode === 'list' ? "calendar" : "list"} size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('DoctorSearch')}
+              style={styles.bookHeaderBtn}
+            >
+              <Ionicons name="calendar-outline" size={16} color="white" />
+              <Text style={styles.bookHeaderText}>Book</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Date Filter Indicator */}
+        {selectedDate && (
+          <View style={styles.dateFilterChip}>
+            <Text style={styles.dateFilterText}>
+              Viewing: {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </Text>
+            <TouchableOpacity onPress={() => setSelectedDate(null)}>
+              <Ionicons name="close-circle" size={18} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* View Mode Content */}
+        {viewMode === 'calendar' && (
+          <View style={styles.calendarContainer}>
+            <Calendar
+              onDayPress={(day) => setSelectedDate(new Date(day.timestamp))}
+              markedDates={markedDates}
+              theme={{
+                selectedDayBackgroundColor: COLORS.primary,
+                todayTextColor: COLORS.primary,
+                arrowColor: COLORS.primary,
+                dotColor: COLORS.primary,
+                textDayFontWeight: '500',
+                textMonthFontWeight: 'bold',
+                textDayHeaderFontWeight: '600',
+                calendarBackground: 'white',
+              }}
+              style={styles.calendar}
+            />
+          </View>
+        )}
+
+        {/* Tabs */}
+        <View style={styles.tabsContainer}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('DoctorSearch')}
-            style={styles.headerAddBtn}
+            style={[styles.tab, activeTab === 'all' && styles.activeTab]}
+            onPress={() => setActiveTab('all')}
           >
-            <Ionicons name="add-circle" size={28} color={COLORS.primary} />
+            <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'appointments' && styles.activeTab]}
+            onPress={() => setActiveTab('appointments')}
+          >
+            <Text style={[styles.tabText, activeTab === 'appointments' && styles.activeTabText]}>Appointments</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'events' && styles.activeTab]}
+            onPress={() => setActiveTab('events')}
+          >
+            <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Appointments List */}
+        {/* List */}
         <ScrollView
           style={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
@@ -132,109 +418,122 @@ export default function ScheduleScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {appointments.length > 0 ? (
-            appointments.map((appt) => {
-              const statusStyle = getStatusStyle(appt.status);
-              return (
-                <TouchableOpacity
-                  key={appt.id}
-                  style={styles.appointmentCard}
-                  onPress={() => navigation.navigate('AppointmentDetail', { appointment: appt })}
-                >
-                  {/* Date Header */}
-                  <View style={styles.dateHeader}>
-                    <Ionicons name="calendar-outline" size={16} color="#666" />
-                    <Text style={styles.dateText}>
-                      {formatDate(appt.requested_date)}
-                    </Text>
-                  </View>
-
-                  {/* Appointment Details */}
-                  <View style={styles.appointmentContent}>
-                    <View style={styles.timeSection}>
-                      <Text style={styles.timeText}>
-                        {formatTime(appt.requested_date)}
-                      </Text>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          { backgroundColor: statusStyle.backgroundColor },
-                        ]}
-                      >
-                        <Text
-                          style={[styles.statusText, { color: statusStyle.color }]}
-                        >
-                          {appt.status?.toUpperCase()}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.doctorSection}>
-                      <Image
-                        source={{
-                          uri: appt.doctor_photo_url ||
-                            'https://ui-avatars.com/api/?name=Doctor&background=random',
-                        }}
-                        style={styles.doctorImage}
-                      />
-                      <View style={styles.doctorInfo}>
-                        <Text style={styles.doctorName}>
-                          {appt.doctor_name || 'Doctor'}
-                        </Text>
-                        <Text style={styles.reasonText}>
-                          {appt.reason || 'Consultation'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Join Call Button (only for accepted appointments) */}
-                    {appt.status === 'accepted' && appt.join_url && (
-                      <TouchableOpacity
-                        style={styles.joinButton}
-                        onPress={() => {
-                          navigation.navigate('VideoCallScreen', {
-                            appointment: appt,
-                            role: 'patient',
-                          });
-                        }}
-                      >
-                        <Ionicons name="videocam" size={20} color="white" />
-                        <Text style={styles.joinButtonText}>Join Video Call</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {/* Meeting Info (if available) */}
-                    {appt.meeting_password && (
-                      <View style={styles.meetingInfo}>
-                        <Text style={styles.meetingLabel}>Meeting Password:</Text>
-                        <Text style={styles.meetingValue}>
-                          {appt.meeting_password}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+          {filteredItems.length > 0 ? (
+            filteredItems.map(renderScheduleItem)
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="calendar-outline" size={64} color="#DDD" />
-              <Text style={styles.emptyText}>No appointments scheduled</Text>
+              <Text style={styles.emptyText}>Nothing scheduled</Text>
               <Text style={styles.emptySubtext}>
-                Schedule an appointment with a doctor to get started
+                {selectedDate
+                  ? "No appointments or events for this date."
+                  : "Your schedule is currently empty."}
               </Text>
-              <TouchableOpacity
-                style={styles.bookButton}
-                onPress={() => navigation.navigate('DoctorSearch')}
-              >
-                <Text style={styles.bookButtonText}>Book New Schedule</Text>
-              </TouchableOpacity>
+              {!selectedDate && (
+                <View style={styles.emptyActions}>
+                  <TouchableOpacity
+                    style={styles.bookButton}
+                    onPress={() => navigation.navigate('DoctorSearch')}
+                  >
+                    <Text style={styles.bookButtonText}>Find Doctor</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
       </View>
 
+      {/* FAB for Personal Events */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
+          setShowEventModal(true);
+        }}
+      >
+        <Ionicons name="add" size={32} color="white" />
+      </TouchableOpacity>
+
       <BottomNavBar navigation={navigation} activeRoute="Schedule" />
+
+      {/* Event Creation Modal */}
+      <Modal visible={showEventModal} animationType="slide" transparent={true} onRequestClose={() => setShowEventModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{eventForm.id ? 'Edit Personal Event' : 'New Personal Event'}</Text>
+              <TouchableOpacity onPress={() => setShowEventModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              <Text style={styles.inputLabel}>Event Title</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g., Take medicine, Personal checkup..."
+                value={eventForm.title}
+                onChangeText={(t) => setEventForm(p => ({ ...p, title: t }))}
+              />
+
+              <Text style={styles.inputLabel}>Description</Text>
+              <TextInput
+                style={[styles.modalInput, styles.textArea]}
+                placeholder="Enter details here..."
+                multiline
+                numberOfLines={3}
+                value={eventForm.description}
+                onChangeText={(t) => setEventForm(p => ({ ...p, description: t }))}
+              />
+
+              <View style={styles.dateTimeContainer}>
+                <View style={styles.dateTimeBlock}>
+                  <Text style={styles.inputLabel}>DATE</Text>
+                  <TouchableOpacity
+                    style={styles.pickerToggle}
+                    onPress={() => setPickerConfig({ show: true, field: 'start', mode: 'date' })}
+                  >
+                    <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.pickerValue}>{eventForm.start_time.toLocaleDateString()}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.dateTimeBlock}>
+                  <Text style={styles.inputLabel}>TIME</Text>
+                  <TouchableOpacity
+                    style={styles.pickerToggle}
+                    onPress={() => setPickerConfig({ show: true, field: 'start', mode: 'time' })}
+                  >
+                    <Ionicons name="time-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.pickerValue}>{eventForm.start_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEvent}>
+                <Text style={styles.saveBtnText}>Save Event</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {pickerConfig.show && (
+              <DateTimePicker
+                value={eventForm[pickerConfig.field === 'start' ? 'start_time' : 'end_time']}
+                mode={pickerConfig.mode}
+                display="default"
+                onChange={(e, d) => {
+                  setPickerConfig({ ...pickerConfig, show: Platform.OS === 'ios' });
+                  if (d) setEventForm(p => ({
+                    ...p,
+                    start_time: d,
+                    end_time: new Date(d.getTime() + 3600000)
+                  }));
+                }}
+              />
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -264,149 +563,356 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
   },
-  headerAddBtn: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  headerIconBtn: {
     padding: 4,
+  },
+  bookHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    elevation: 2,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+  bookHeaderText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  dateFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '15',
+    margin: 16,
+    marginBottom: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+  },
+  dateFilterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  calendarContainer: {
+    backgroundColor: 'white',
+    margin: 16,
+    marginBottom: 0,
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+  calendar: {
+    paddingBottom: 10,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginTop: 16,
+    gap: 10,
+  },
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  activeTab: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  activeTabText: {
+    color: 'white',
   },
   scrollContainer: {
     flex: 1,
     padding: 16,
   },
-  appointmentCard: {
+  sexyCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 16,
+    flexDirection: 'row',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 2,
-    overflow: 'hidden',
+    elevation: 3,
   },
-  dateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F5F7FA',
-    gap: 8,
+  sexySide: {
+    width: 6,
   },
-  dateText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  appointmentContent: {
+  sexyContent: {
+    flex: 1,
     padding: 16,
   },
-  timeSection: {
+  sexyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
-  timeText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  sexyBadgesRow: {
+    flexDirection: 'row',
+    gap: 6,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  doctorSection: {
+  sexyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
   },
-  doctorImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
+  sexyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
-  doctorInfo: {
-    flex: 1,
+  typeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
-  doctorName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  typeBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  sexyTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#263238',
     marginBottom: 4,
   },
-  reasonText: {
-    fontSize: 14,
-    color: '#666',
+  sexyDesc: {
+    fontSize: 13,
+    color: '#607D8B',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  sexyFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  eventActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  eventBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    gap: 6,
+  },
+  eventBtnText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deleteBtn: {
+    backgroundColor: '#FFEBEE',
+    padding: 8,
+    borderRadius: 10,
+  },
+  statusTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusTagText: {
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   joinButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     gap: 8,
-    marginTop: 8,
   },
   joinButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  meetingInfo: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#F5F7FA',
-    borderRadius: 8,
-  },
-  meetingLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  meetingValue: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    backgroundColor: '#9C27B0',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#9C27B0',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    maxHeight: '85%',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#333',
+  },
+  modalContent: {
+    padding: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  modalInput: {
+    backgroundColor: '#F8F9FB',
+    borderRadius: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 20,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#EAECEF',
+    color: '#333',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  dateTimeContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 32,
+  },
+  dateTimeBlock: {
+    flex: 1,
+  },
+  pickerToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FB',
+    padding: 14,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#EAECEF',
+    gap: 10,
+  },
+  pickerValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600',
+  },
+  saveBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 18,
+    borderRadius: 15,
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    marginTop: 10,
+  },
+  saveBtnText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   emptyState: {
     alignItems: 'center',
-    marginTop: 100,
+    marginTop: 60,
     paddingHorizontal: 40,
   },
   emptyText: {
     marginTop: 16,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#444',
   },
   emptySubtext: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#999',
+    marginTop: 10,
+    fontSize: 15,
+    color: '#888',
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 32,
   },
   bookButton: {
-    marginTop: 24,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingHorizontal: 40,
+    paddingVertical: 15,
+    borderRadius: 15,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
   },
   bookButtonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
 });

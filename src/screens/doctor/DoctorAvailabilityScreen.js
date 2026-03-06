@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -19,6 +20,20 @@ export default function DoctorAvailabilityScreen({ navigation }) {
         Sunday: { enabled: false, start: '09:00', end: '13:00' }
     });
 
+    useEffect(() => {
+        const loadAvailability = async () => {
+            try {
+                const stored = await AsyncStorage.getItem('doctor_availability');
+                if (stored) {
+                    setAvailability(JSON.parse(stored));
+                }
+            } catch (error) {
+                console.error('Error loading local availability', error);
+            }
+        };
+        loadAvailability();
+    }, []);
+
     const toggleDay = (day) => {
         setAvailability(prev => ({
             ...prev,
@@ -26,9 +41,13 @@ export default function DoctorAvailabilityScreen({ navigation }) {
         }));
     };
 
-    const handleSave = () => {
-        // TODO: Implement save to backend
-        console.log('Save availability:', availability);
+    const handleSave = async () => {
+        try {
+            await AsyncStorage.setItem('doctor_availability', JSON.stringify(availability));
+            console.log('Saved availability locally');
+        } catch (error) {
+            console.error('Error saving local availability', error);
+        }
         navigation.goBack();
     };
 

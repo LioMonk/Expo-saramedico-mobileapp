@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { teamAPI } from '../../services/api';
+import { teamAPI, hospitalAPI } from '../../services/api';
 
 export default function HospitalInviteTeamScreen({ navigation }) {
     const [loading, setLoading] = useState(false);
@@ -22,10 +22,19 @@ export default function HospitalInviteTeamScreen({ navigation }) {
     const [selectedRole, setSelectedRole] = useState('');
     const [specialty, setSpecialty] = useState('');
     const [roles, setRoles] = useState([]);
+    const [orgId, setOrgId] = useState(null);
 
     useEffect(() => {
         loadRoles();
+        loadOrg();
     }, []);
+
+    const loadOrg = async () => {
+        try {
+            const res = await hospitalAPI.getOrganization();
+            if (res.data?.id) setOrgId(res.data.id);
+        } catch (e) { /* silent */ }
+    };
 
     const loadRoles = async () => {
         try {
@@ -61,8 +70,8 @@ export default function HospitalInviteTeamScreen({ navigation }) {
                 email,
                 full_name: `${firstName} ${lastName}`.trim(),
                 role: backendRole,
-                department_id: "00000000-0000-0000-0000-000000000000", // Fallback Default
-                department_role: specialty || selectedRole, // e.g., "Cardiologist" or "Nurse"
+                department_id: orgId || '00000000-0000-0000-0000-000000000000',
+                department_role: specialty || selectedRole || 'Physician',
             };
 
             await teamAPI.inviteTeamMember(payload);

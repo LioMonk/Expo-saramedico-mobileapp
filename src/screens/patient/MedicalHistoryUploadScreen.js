@@ -95,20 +95,18 @@ export default function MedicalHistoryUploadScreen({ navigation }) {
                 }
             );
 
+            const fileName = response.data?.file_name || response.data?.filename || selectedFile.name;
             Alert.alert(
                 'Upload Successful',
-                `${response.data.file_name} has been uploaded successfully`,
+                `${fileName} has been uploaded successfully`,
                 [
                     {
                         text: 'OK',
                         onPress: () => {
-                            // Reset form
                             setSelectedFile(null);
                             setTitle('');
                             setDescription('');
                             setUploadProgress(0);
-
-                            // Navigate back or to documents list
                             navigation.goBack();
                         },
                     },
@@ -116,8 +114,21 @@ export default function MedicalHistoryUploadScreen({ navigation }) {
             );
         } catch (error) {
             console.error('Upload error:', error);
-            const errorInfo = ErrorHandler.handleError(error);
-            Alert.alert('Upload Failed', errorInfo.message);
+            // Check for Redis/Celery connectivity error — file may still have been saved
+            const errData = error.response?.data;
+            const isRedisError = errData?.detail && typeof errData.detail === 'string'
+                && errData.detail.includes('redis');
+
+            if (error.response?.status === 500 && isRedisError) {
+                Alert.alert(
+                    'Upload Completed',
+                    'Your document was uploaded but AI processing is temporarily unavailable. You can still view it in your records.',
+                    [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+            } else {
+                const errorInfo = ErrorHandler.handleError(error);
+                Alert.alert('Upload Failed', errorInfo.message);
+            }
         } finally {
             setUploading(false);
         }

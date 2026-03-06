@@ -122,9 +122,6 @@ class FileUploadService {
      */
     static createUploadConfig(onProgress) {
         return {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
             onUploadProgress: (progressEvent) => {
                 const progress = this.calculateProgress(
                     progressEvent.loaded,

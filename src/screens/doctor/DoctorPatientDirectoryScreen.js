@@ -35,10 +35,14 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
     setLoading(true);
     try {
       const response = await doctorAPI.getPatients();
-      const patientsData = response.data?.patients || response.data || [];
+      // API returns { all_patients: [...], recent_patients: [...] }
+      const patientsData = response.data?.all_patients
+        || response.data?.patients
+        || (Array.isArray(response.data) ? response.data : [])
+        || [];
 
       // Sort by last visit (most recent first)
-      const sorted = patientsData.sort((a, b) => {
+      const sorted = [...patientsData].sort((a, b) => {
         const dateA = new Date(a.lastVisit || a.last_visit || 0);
         const dateB = new Date(b.lastVisit || b.last_visit || 0);
         return dateB - dateA;
@@ -47,7 +51,6 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
       setPatients(sorted);
     } catch (error) {
       console.error('Error loading patients:', error);
-      // Fallback to empty array
       setPatients([]);
     } finally {
       setLoading(false);

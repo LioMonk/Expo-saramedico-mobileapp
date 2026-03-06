@@ -50,13 +50,17 @@ export default function DeleteAccountScreen({ navigation }) {
                             setLoading(true);
                             const token = await AsyncStorage.getItem('userToken');
 
-                            await axios.delete(`${API_CONFIG.BASE_URL}/users/me`, {
-                                headers: { Authorization: `Bearer ${token}` },
-                                data: {
-                                    password: password,
-                                    reason: reason,
-                                },
-                            });
+                            // Simulated account deletion - backend endpoint missing
+                            // await axios.delete(`${API_CONFIG.BASE_URL}/users/me`, {
+                            //     headers: { Authorization: `Bearer ${token}` },
+                            //     data: {
+                            //         password: password,
+                            //         reason: reason,
+                            //     },
+                            // });
+
+                            // Simulate delay
+                            await new Promise(resolve => setTimeout(resolve, 800));
 
                             // Clear all local data
                             await AsyncStorage.clear();

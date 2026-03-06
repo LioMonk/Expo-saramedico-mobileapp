@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity
 } from 'react-native';
@@ -6,23 +6,68 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { CustomButton } from '../../components/CustomComponents';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUserData } from '../../services/api';
 
 const SPECIALTIES = [
-  { id: 'derm', name: 'Dermatology', icon: 'water' },
   { id: 'card', name: 'Cardiology', icon: 'heart' },
-  { id: 'neur', name: 'Neurology', icon: 'fitness' }, // Neurology specialty icon
-  { id: 'radi', name: 'Radiology', icon: 'man' },
   { id: 'pedi', name: 'Pediatrics', icon: 'happy' },
+  { id: 'derm', name: 'Dermatology', icon: 'water' },
+  { id: 'neur', name: 'Neurology', icon: 'fitness' },
+  { id: 'radi', name: 'Radiology', icon: 'man' },
+  { id: 'gene', name: 'General Physician', icon: 'medkit' },
+  { id: 'orth', name: 'Orthopedics', icon: 'fitness-outline' },
+  { id: 'psyc', name: 'Psychiatry', icon: 'brain-outline' },
+  { id: 'inte', name: 'Internal Medicine', icon: 'body-outline' },
 ];
 
+
+
 export default function DoctorSpecialtyScreen({ navigation }) {
-  const [selectedId, setSelectedId] = useState('card'); // Default 'Cardiology' selected for demo
+  const [selectedId, setSelectedId] = useState(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customSpecialty, setCustomSpecialty] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const loadSavedSpecialty = async () => {
+      try {
+        const userData = await getUserData();
+        if (userData && userData.specialty) {
+          const specialtyName = userData.specialty;
+          // Find matching specialty in our list
+          const match = SPECIALTIES.find(s =>
+            s.name.toLowerCase() === specialtyName.toLowerCase() ||
+            (specialtyName.toLowerCase() === 'general practice' && s.id === 'gene')
+          );
+
+          if (match) {
+            setSelectedId(match.id);
+          } else {
+            // If not found in list, show in custom input
+            setShowCustomInput(true);
+            setCustomSpecialty(specialtyName);
+          }
+        } else {
+          // Default to Cardiology if nothing found (existing behavior)
+          setSelectedId('card');
+        }
+      } catch (error) {
+        console.log('Error loading specialty:', error);
+        setSelectedId('card');
+      }
+    };
+
+    loadSavedSpecialty();
+  }, []);
 
   const handleContinue = () => {
     navigation.navigate('DoctorMicrophoneTestScreen');
   };
+
+  const filteredSpecialties = SPECIALTIES.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,21 +93,15 @@ export default function DoctorSpecialtyScreen({ navigation }) {
             placeholder="Search speciality (e.g. Neurology)"
             placeholderTextColor="#999"
             style={styles.input}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
-        </View>
-
-        {/* Most Common Chips */}
-        <Text style={styles.sectionLabel}>Most Common</Text>
-        <View style={styles.chipRow}>
-          <TouchableOpacity style={styles.chip}><Text style={styles.chipText}>General Physician</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.chip, styles.chipActive]}><Text style={styles.chipTextActive}>Cardiology</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.chip}><Text style={styles.chipText}>Pediatrics</Text></TouchableOpacity>
         </View>
 
         {/* All Specialties List */}
         <Text style={styles.sectionLabel}>All Specialties</Text>
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-          {SPECIALTIES.map((item) => {
+          {filteredSpecialties.map((item) => {
             const isSelected = selectedId === item.id;
             return (
               <TouchableOpacity
@@ -76,7 +115,7 @@ export default function DoctorSpecialtyScreen({ navigation }) {
               >
                 <View style={styles.cardLeft}>
                   <View style={styles.iconBox}>
-                    <Ionicons name={item.icon} size={20} color="#555" />
+                    <Ionicons name={item.icon} size={20} color={isSelected ? COLORS.primary : "#555"} />
                   </View>
                   <Text style={[styles.cardTitle, isSelected && styles.cardTitleActive]}>{item.name}</Text>
                 </View>
@@ -91,7 +130,7 @@ export default function DoctorSpecialtyScreen({ navigation }) {
 
           {/* Custom Specialty Option */}
           <TouchableOpacity
-            style={[styles.card, showCustomInput && styles.cardActive, styles.customCard]}
+            style={[styles.card, (showCustomInput || (selectedId === null && !SPECIALTIES.find(s => s.id === selectedId))) && styles.cardActive, styles.customCard]}
             onPress={() => {
               setShowCustomInput(true);
               setSelectedId(null);
@@ -130,7 +169,13 @@ export default function DoctorSpecialtyScreen({ navigation }) {
         {/* Footer */}
         <View style={styles.footer}>
           <CustomButton title="Continue" onPress={handleContinue} />
-          <TouchableOpacity style={{ alignItems: 'center', marginTop: 15 }}>
+          <TouchableOpacity
+            style={{ alignItems: 'center', marginTop: 15 }}
+            onPress={() => {
+              setShowCustomInput(true);
+              setSelectedId(null);
+            }}
+          >
             <Text style={{ color: '#999', fontSize: 13 }}>I don't see my speciality</Text>
           </TouchableOpacity>
         </View>

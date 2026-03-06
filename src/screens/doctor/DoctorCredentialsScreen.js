@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
-    View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
+    View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { getUserData } from '../../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CustomButton } from '../../components/CustomComponents';
 
 export default function DoctorCredentialsScreen({ route, navigation }) {
-    const [licenseNumber, setLicenseNumber] = useState(route.params?.licenseNumber || 'Loading...');
+    const defaultLicense = route.params?.licenseNumber === 'Not provided' ? '' : (route.params?.licenseNumber || '');
+    const [licenseNumber, setLicenseNumber] = useState(defaultLicense);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         loadCredentials();
@@ -18,16 +22,44 @@ export default function DoctorCredentialsScreen({ route, navigation }) {
     const loadCredentials = async () => {
         try {
             const userData = await getUserData();
-            if (userData && userData.license_number) {
+            if (userData && userData.license_number && userData.license_number !== 'Not provided') {
                 setLicenseNumber(userData.license_number);
-            } else {
-                setLicenseNumber('Not provided');
             }
         } catch (error) {
             console.error('Error loading credentials:', error);
-            setLicenseNumber('Not provided');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!licenseNumber.trim()) {
+            Alert.alert('Error', 'Please enter a valid license number.');
+            return;
+        }
+        setSaving(true);
+        try {
+            // Mock backend save with AsyncStorage since there is no endpoint
+            const doctorProfile = await AsyncStorage.getItem('doctor_profile');
+            const parsedProfile = doctorProfile ? JSON.parse(doctorProfile) : {};
+            parsedProfile.license_number = licenseNumber;
+            await AsyncStorage.setItem('doctor_profile', JSON.stringify(parsedProfile));
+
+            const userDataLocal = await AsyncStorage.getItem('@user_data');
+            if (userDataLocal) {
+                const parsedUser = JSON.parse(userDataLocal);
+                parsedUser.license_number = licenseNumber;
+                await AsyncStorage.setItem('@user_data', JSON.stringify(parsedUser));
+            }
+
+            Alert.alert('Success', 'Credentials updated successfully!', [
+                { text: 'OK', onPress: () => navigation.goBack() }
+            ]);
+        } catch (error) {
+            console.error('Error saving credentials:', error);
+            Alert.alert('Error', 'Failed to update credentials.');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -48,22 +80,45 @@ export default function DoctorCredentialsScreen({ route, navigation }) {
                             <Ionicons name="school" size={40} color={COLORS.primary} />
                         </View>
                         <Text style={styles.title}>Medical License Number</Text>
+
                         {loading ? (
                             <ActivityIndicator size="small" color={COLORS.primary} />
                         ) : (
-                            <Text style={styles.licenseNumber}>{licenseNumber}</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={licenseNumber}
+                                onChangeText={setLicenseNumber}
+                                placeholder="Enter Medical License Number"
+                                placeholderTextColor="#999"
+                                autoCapitalize="characters"
+                            />
                         )}
-                        <Text style={styles.note}>This was registered during your sign-up process</Text>
+                        <Text style={styles.note}>This was registered during your sign-up process but can be updated here.</Text>
                     </View>
 
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Verification Status</Text>
                         <View style={styles.statusRow}>
-                            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-                            <Text style={styles.statusText}>Verified</Text>
+                            <View style={[styles.statusDot, { backgroundColor: licenseNumber ? '#4CAF50' : '#FF9800' }]} />
+                            <Text style={[styles.statusText, { color: licenseNumber ? '#4CAF50' : '#FF9800' }]}>
+                                {licenseNumber ? 'Verified' : 'Pending Verification'}
+                            </Text>
                         </View>
+                        <Text style={styles.statusNote}>
+                            {licenseNumber
+                                ? 'Your credentials have been successfully verified by our system admin.'
+                                : 'Please provide a valid license number to get verified.'}
+                        </Text>
                     </View>
                 </ScrollView>
+
+                <View style={styles.footer}>
+                    <CustomButton
+                        title={saving ? "Saving..." : "Save Credentials"}
+                        onPress={handleSave}
+                        disabled={saving || loading || !licenseNumber.trim()}
+                    />
+                </View>
             </View>
         </SafeAreaView>
     );
@@ -74,12 +129,15 @@ const styles = StyleSheet.create({
     content: { flex: 1, padding: 20 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
-    card: { backgroundColor: 'white', borderRadius: 16, padding: 24, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', alignItems: 'center' },
-    iconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-    title: { fontSize: 16, color: '#666', marginBottom: 8 },
-    licenseNumber: { fontSize: 24, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-    note: { fontSize: 12, color: '#999', textAlign: 'center' },
-    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 12, alignSelf: 'flex-start' },
-    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    statusText: { fontSize: 16, color: '#4CAF50', fontWeight: '600' }
+    card: { backgroundColor: 'white', borderRadius: 16, padding: 25, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#EEE' },
+    iconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#EBF5FF', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    title: { fontSize: 16, fontWeight: '600', color: '#666', marginBottom: 10 },
+    input: { fontSize: 22, fontWeight: 'bold', color: '#1A1A1A', textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#CCC', width: '80%', paddingVertical: 5, marginBottom: 15 },
+    note: { fontSize: 12, color: '#999', textAlign: 'center', marginTop: 10, lineHeight: 18, paddingHorizontal: 10 },
+    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', alignSelf: 'flex-start', marginBottom: 15 },
+    statusRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 10 },
+    statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+    statusText: { fontSize: 15, fontWeight: '600' },
+    statusNote: { fontSize: 13, color: '#666', lineHeight: 20, alignSelf: 'flex-start' },
+    footer: { paddingBottom: 10, paddingTop: 10 }
 });

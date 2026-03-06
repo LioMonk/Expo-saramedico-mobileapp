@@ -1,0 +1,3 @@
+env: load .env
+env: export API_ENVIRONMENT AWS_API_URL
+Starting project at /home/anurag-waskle/Documents/LioMonk Projects/Sara medico/Expo-saramedico-mobileapp

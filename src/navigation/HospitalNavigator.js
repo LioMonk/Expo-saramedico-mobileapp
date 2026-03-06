@@ -3,8 +3,14 @@ import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/
 
 import HospitalDrawerNavigator from './HospitalDrawerNavigator';
 
-// Hospital Secondary Screens
+// Hospital Secondary Screens — all wired to real backend endpoints
 import HospitalInviteTeamScreen from '../screens/hospital/HospitalInviteTeamScreen';
+import HospitalDirectoryScreen from '../screens/hospital/HospitalDirectoryScreen';
+import HospitalPatientsScreen from '../screens/hospital/HospitalPatientsScreen';
+import HospitalStaffScreen from '../screens/hospital/HospitalStaffScreen';
+import HospitalAppointmentsScreen from '../screens/hospital/HospitalAppointmentsScreen';
+
+// Legacy screens kept for backward compatibility
 import HospitalDepartmentsScreen from '../screens/hospital/HospitalDepartmentsScreen';
 import HospitalSurgeryScreen from '../screens/hospital/HospitalSurgeryScreen';
 import HospitalAnalyticsScreen from '../screens/hospital/HospitalAnalyticsScreen';
@@ -28,8 +34,14 @@ export default function HospitalNavigator() {
     >
       <Stack.Screen name="HospitalRoot" component={HospitalDrawerNavigator} />
 
-      {/* Secondary Screens */}
+      {/* ─── New Synced Screens (Hospitalflow.pdf compliant) ─── */}
+      <Stack.Screen name="HospitalDirectoryScreen" component={HospitalDirectoryScreen} />
+      <Stack.Screen name="HospitalPatientsScreen" component={HospitalPatientsScreen} />
+      <Stack.Screen name="HospitalStaffScreen" component={HospitalStaffScreen} />
+      <Stack.Screen name="HospitalAppointmentsScreen" component={HospitalAppointmentsScreen} />
       <Stack.Screen name="HospitalInviteTeamScreen" component={HospitalInviteTeamScreen} />
+
+      {/* ─── Legacy Screens ─── */}
       <Stack.Screen name="HospitalDepartmentsScreen" component={HospitalDepartmentsScreen} />
       <Stack.Screen name="HospitalSurgeryScreen" component={HospitalSurgeryScreen} />
       <Stack.Screen name="HospitalAnalyticsScreen" component={HospitalAnalyticsScreen} />

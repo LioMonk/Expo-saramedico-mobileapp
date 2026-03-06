@@ -1,17 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image
+   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
+import { doctorAPI } from '../../services/api';
+import { CustomButton } from '../../components/CustomComponents';
 
-export default function DoctorPostVisitScreen({ navigation }) {
-   // Mock data matching the screenshot
-   const patient = {
-      name: 'Benjamin Dopel',
-      details: '35, Male',
-      img: 'https://i.pravatar.cc/100?img=12'
+export default function DoctorPostVisitScreen({ navigation, route }) {
+   const { patient, patientId, patientName, visit, mode, showSoap } = route.params || {};
+   const [loading, setLoading] = useState(false);
+
+   // SOAP States
+   const [subjective, setSubjective] = useState(visit?.notes || '');
+   const [objective, setObjective] = useState('');
+   const [assessment, setAssessment] = useState(visit?.visit_type || '');
+   const [plan, setPlan] = useState('');
+
+   const handleSave = async () => {
+      const id = patientId || patient?.id;
+      if (!id) {
+         Alert.alert('Error', 'Patient identification missing');
+         return;
+      }
+
+      setLoading(true);
+      try {
+         const soapData = {
+            visit_type: assessment || 'Consultation',
+            notes: `SUBJECTIVE: ${subjective}\nOBJECTIVE: ${objective}\nASSESSMENT: ${assessment}\nPLAN: ${plan}`,
+            reason: subjective.substring(0, 50),
+            description: assessment
+         };
+
+         await doctorAPI.createRecord(id, soapData);
+         Alert.alert('Success', 'Visit notes saved successfully', [
+            { text: 'OK', onPress: () => navigation.goBack() }
+         ]);
+      } catch (error) {
+         console.error('Save record error:', error);
+         Alert.alert('Error', 'Failed to save visit record');
+      } finally {
+         setLoading(false);
+      }
    };
 
    return (
@@ -23,67 +55,80 @@ export default function DoctorPostVisitScreen({ navigation }) {
                <TouchableOpacity onPress={() => navigation.goBack()}>
                   <Ionicons name="arrow-back" size={24} color="#333" />
                </TouchableOpacity>
-               <Text style={styles.headerTitle}>Post-Visit Editor</Text>
-               <View style={{ width: 24 }} />
+               <Text style={styles.headerTitle}>{showSoap || mode === 'manual' ? 'Visit Notes (SOAP)' : 'Visit Details'}</Text>
+               <TouchableOpacity onPress={handleSave} disabled={loading}>
+                  {loading ? (
+                     <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                     <Text style={{ color: COLORS.primary, fontWeight: 'bold' }}>Save</Text>
+                  )}
+               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
                {/* Patient Info Header */}
                <View style={styles.patientRow}>
-                  <Image source={{ uri: patient.img }} style={styles.avatar} />
+                  <View style={styles.avatarPlaceholder}>
+                     <Ionicons name="person" size={24} color="#666" />
+                  </View>
                   <View>
-                     <Text style={styles.patientName}>{patient.name}</Text>
-                     <Text style={styles.patientDetails}>{patient.details}</Text>
+                     <Text style={styles.patientName}>{patientName || patient?.full_name || patient?.name || 'Patient'}</Text>
+                     <Text style={styles.patientDetails}>MRN: {patient?.mrn || 'N/A'}</Text>
                   </View>
                </View>
 
                {/* SOAP Note Sections */}
-
-               {/* SUBJECTIVE */}
-               <Text style={styles.sectionLabel}>SUBJECTIVE</Text>
-               <View style={styles.card}>
-                  <Text style={styles.cardText}>
-                     Patient presents with persistent lower back pain. Reports stiffness in the mornings. States stretching exercises have been partially effective but notes radiating pain down the left thigh. Denies numbness or pain extending below the knees. Describes these issues with guidance.
-                  </Text>
+               <View style={styles.formSection}>
+                  <Text style={styles.sectionLabel}>SUBJECTIVE</Text>
+                  <TextInput
+                     style={[styles.input, { height: 100 }]}
+                     multiline
+                     placeholder="Chief complaint & patient history..."
+                     value={subjective}
+                     onChangeText={setSubjective}
+                  />
                </View>
 
-               {/* OBJECTIVE */}
-               <Text style={styles.sectionLabel}>OBJECTIVE</Text>
-               <View style={styles.card}>
-                  <Text style={styles.cardText}>
-                     Patient appears comfortable at rest but demonstrates guarded movement when standing. Range of motion in lumbar spine limited in flexion. No visible antalgic gait noted today.
-                  </Text>
+               <View style={styles.formSection}>
+                  <Text style={styles.sectionLabel}>OBJECTIVE</Text>
+                  <TextInput
+                     style={[styles.input, { height: 100 }]}
+                     multiline
+                     placeholder="Physical findings & vital signs..."
+                     value={objective}
+                     onChangeText={setObjective}
+                  />
                </View>
 
-               {/* ASSESSMENT */}
-               <Text style={styles.sectionLabel}>ASSESSMENT</Text>
-               <View style={styles.card}>
-                  <Text style={styles.cardText}>
-                     Symptoms consistent with lumbar radiculopathy (L4-L5 Distribution). Unlikely disc herniation requiring surgical intervention at this stage given lack of neurological deficit.
-                  </Text>
+               <View style={styles.formSection}>
+                  <Text style={styles.sectionLabel}>ASSESSMENT</Text>
+                  <TextInput
+                     style={[styles.input, { height: 80 }]}
+                     multiline
+                     placeholder="Diagnosis & differential..."
+                     value={assessment}
+                     onChangeText={setAssessment}
+                  />
                </View>
 
-               {/* PLAN */}
-               <Text style={styles.sectionLabel}>PLAN</Text>
-               <View style={styles.card}>
-                  <View style={styles.bulletItem}>
-                     <Text style={styles.bullet}>•</Text>
-                     <Text style={styles.cardText}>Continue daily stretching regimen, modify to avoid pain.</Text>
-                  </View>
-                  <View style={styles.bulletItem}>
-                     <Text style={styles.bullet}>•</Text>
-                     <Text style={styles.cardText}>Increase Naproxen to 500mg BID with food.</Text>
-                  </View>
-                  <View style={styles.bulletItem}>
-                     <Text style={styles.bullet}>•</Text>
-                     <Text style={styles.cardText}>Follow up in 2 weeks.</Text>
-                  </View>
-                  <View style={styles.bulletItem}>
-                     <Text style={styles.bullet}>•</Text>
-                     <Text style={styles.cardText}>Refer to PT if no improvement.</Text>
-                  </View>
+               <View style={styles.formSection}>
+                  <Text style={styles.sectionLabel}>PLAN</Text>
+                  <TextInput
+                     style={[styles.input, { height: 120 }]}
+                     multiline
+                     placeholder="Treatment, labs & follow-up..."
+                     value={plan}
+                     onChangeText={setPlan}
+                  />
                </View>
+
+               <CustomButton
+                  title={loading ? "Saving..." : "Complete Visit"}
+                  onPress={handleSave}
+                  style={{ marginTop: 20 }}
+                  disabled={loading}
+               />
 
             </ScrollView>
          </View>
@@ -94,20 +139,13 @@ export default function DoctorPostVisitScreen({ navigation }) {
 const styles = StyleSheet.create({
    container: { flex: 1, backgroundColor: '#F9FAFC' },
    content: { flex: 1, padding: 20 },
-
    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
-
    patientRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
-   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15 },
+   avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
    patientName: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
    patientDetails: { fontSize: 14, color: '#666' },
-
-   sectionLabel: { fontSize: 13, fontWeight: 'bold', color: '#90CAF9', marginBottom: 10, marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }, // Light blue label color based on screenshot
-
-   card: { backgroundColor: 'white', borderRadius: 12, padding: 15, marginBottom: 15, borderWidth: 1, borderColor: '#EEE' }, // No shadow, clean border as per UI
-   cardText: { fontSize: 14, color: '#444', lineHeight: 22 },
-
-   bulletItem: { flexDirection: 'row', marginBottom: 4 },
-   bullet: { fontSize: 14, color: '#444', marginRight: 8, lineHeight: 22 }
+   formSection: { marginBottom: 20 },
+   sectionLabel: { fontSize: 13, fontWeight: 'bold', color: COLORS.primary, marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
+   input: { backgroundColor: 'white', borderRadius: 12, padding: 15, borderWidth: 1, borderColor: '#EEE', textAlignVertical: 'top', color: '#333' }
 });

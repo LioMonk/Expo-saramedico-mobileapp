@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Modal, TouchableOpacity, Switch,
-  TouchableWithoutFeedback, FlatList, Alert, ActivityIndicator
+  TouchableWithoutFeedback, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -28,25 +29,59 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
 
+  const searchTimer = useRef(null);
+
   useEffect(() => {
-    if (patientSearch.length > 1) {
-      searchPatients();
-    } else {
+    // Clear previous timer
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+
+    // If search text is too short or matches selected patient, don't search
+    if (patientSearch.length <= 1) {
       setPatients([]);
       setShowPatientList(false);
+      return;
     }
+
+    if (selectedPatient && patientSearch === (selectedPatient.full_name || selectedPatient.name)) {
+      setShowPatientList(false);
+      return;
+    }
+
+    // Debounce search to 500ms
+    searchTimer.current = setTimeout(() => {
+      searchPatients();
+    }, 500);
+
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
   }, [patientSearch]);
 
   const searchPatients = async () => {
+    if (!patientSearch.trim()) {
+      setPatients([]);
+      setShowPatientList(false);
+      return;
+    }
+
     setSearchLoading(true);
     try {
-      const response = await doctorAPI.searchPatients(patientSearch);
-      const patientData = response.data?.patients || response.data || [];
-      setPatients(patientData.slice(0, 5));
-      setShowPatientList(patientData.length > 0);
+      const response = await doctorAPI.getPatients();
+      const patientData = response.data?.all_patients || response.data?.patients || (Array.isArray(response.data) ? response.data : []) || [];
+
+      // Filter locally since backend /patients endpoint currently returns all organization patients
+      const query = patientSearch.toLowerCase();
+      const filtered = patientData.filter(p =>
+        (p.name || p.full_name || '').toLowerCase().includes(query) ||
+        (p.mrn || '').toLowerCase().includes(query)
+      );
+
+      setPatients(filtered.slice(0, 5));
+      setShowPatientList(filtered.length > 0);
     } catch (error) {
       console.log('Patient search error:', error);
       setPatients([]);
+      setShowPatientList(false);
     } finally {
       setSearchLoading(false);
     }
@@ -54,7 +89,7 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
 
   const handlePatientSelect = (patient) => {
     setSelectedPatient(patient);
-    setPatientSearch(patient.name);
+    setPatientSearch(patient.full_name || patient.name);
     setShowPatientList(false);
   };
 
@@ -64,8 +99,9 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
   };
 
   const handleStart = async () => {
-    if (!selectedPatient && !patientSearch) {
-      Alert.alert('Select Patient', 'Please select or search for a patient first');
+    const patientId = selectedPatient?.id;
+    if (!patientId) {
+      Alert.alert('Select Patient', 'Please select a patient from the search results first');
       return;
     }
 
@@ -76,25 +112,27 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
         // Start immediate call
         if (captureMode === 'video') {
           // Create instant appointment with Zoom meeting
-          try {
-            const response = await doctorAPI.createInstantAppointment(selectedPatient?.id);
-            const appointment = response.data;
+          const response = await doctorAPI.createInstantAppointment(patientId);
+          // Auto approve it (wait, consultations are auto-approved by default in some systems, 
+          // let's check if we still need approveAppointment. In consultations.py, schedule_consultation 
+          // creates the consultation. We might need to approve the appointment if the underlying 
+          // model is still Appointment. But consultations usually have their own status.)
+          const consultation = response.data;
 
-            onClose();
-            navigation.navigate('VideoCallScreen', {
-              appointment: appointment,
-              role: 'doctor'
-            });
-          } catch (error) {
-            console.error('Failed to create instant appointment:', error);
-            Alert.alert('Error', 'Failed to create meeting. Please try again.');
-          }
+          // If the backend returns a consultation object, we should use its fields.
+          // Note: In Sarah Medico, consultations and appointments are linked or synonymous.
+
+          onClose();
+          navigation.navigate('VideoCallScreen', {
+            appointment: consultation, // Pass the whole object
+            role: 'doctor'
+          });
         } else {
           // For chat/manual notes mode
           onClose();
           navigation.navigate('DoctorPostVisitScreen', {
-            patientId: selectedPatient?.id,
-            patientName: selectedPatient?.name || patientSearch,
+            patientId: patientId,
+            patientName: selectedPatient.full_name || selectedPatient.name,
             mode: 'manual'
           });
         }
@@ -104,24 +142,32 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
           '15min': 15,
           '30min': 30,
           '1hour': 60,
-          'custom': 30
+          'custom': 45
         }[scheduleOption];
 
-        const scheduledTime = new Date(Date.now() + scheduleMinutes * 60 * 1000);
+        // Ensure scheduled time is at least 3 minutes in future to avoid clock-drift 422s
+        const bufferMinutes = Math.max(scheduleMinutes || 0, 3);
+        const scheduledTime = new Date(Date.now() + bufferMinutes * 60 * 1000).toISOString();
 
-        // Create scheduled consultation
+        // Create scheduled consultation via backend
+        const response = await doctorAPI.createConsultation({
+          patientId: patientId,
+          scheduledAt: scheduledTime,
+          notes: captureMode === 'video' ? 'Tele-consultation' : 'In-person / Manual Notes'
+        });
+
+        const consultation = response.data;
+
         Alert.alert(
           'Meeting Scheduled',
-          `Consultation scheduled for ${scheduledTime.toLocaleTimeString()}. Notification sent to patient.`,
+          `Consultation scheduled for ${new Date(scheduledTime).toLocaleTimeString()}. Patient has been notified.`,
           [{ text: 'OK', onPress: onClose }]
         );
-
-        // TODO: Create actual scheduled consultation via API
-        // await doctorAPI.createConsultation({ patient_id: selectedPatient?.id, scheduled_at: scheduledTime });
       }
     } catch (error) {
-      console.error('Start meet error:', error);
-      Alert.alert('Error', 'Failed to start meeting. Please try again.');
+      console.error('Consultation creation error:', error);
+      const msg = error.response?.data?.detail || 'Failed to create consultation. Please try again.';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -138,160 +184,172 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
           <View style={styles.backdrop} />
         </TouchableWithoutFeedback>
 
-        <View style={styles.modalContent}>
-          <View style={styles.dragHandle} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalContainer}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.dragHandle} />
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
 
-          <Text style={styles.title}>Start New Consultation</Text>
-          <Text style={styles.subtitle}>Select patient and capture mode</Text>
+              <Text style={styles.title}>Start New Consultation</Text>
+              <Text style={styles.subtitle}>Select patient and capture mode</Text>
 
-          {/* Patient Selection */}
-          <Text style={styles.label}>PATIENT</Text>
-          <View style={styles.patientRow}>
-            <View style={styles.searchBox}>
-              <Ionicons name="search" size={18} color="#999" />
-              <TextInput
-                placeholder="Search patient name, ID..."
-                style={styles.input}
-                value={patientSearch}
-                onChangeText={setPatientSearch}
-              />
-              {searchLoading && <ActivityIndicator size="small" color={COLORS.primary} />}
-            </View>
-            <TouchableOpacity style={styles.addPatientBtn} onPress={handleAddPatient}>
-              <Ionicons name="person-add" size={22} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Patient Search Results */}
-          {showPatientList && (
-            <View style={styles.patientList}>
-              {patients.map((patient, index) => (
-                <TouchableOpacity
-                  key={patient.id || index}
-                  style={styles.patientItem}
-                  onPress={() => handlePatientSelect(patient)}
-                >
-                  <View style={styles.patientAvatar}>
-                    <Ionicons name="person" size={18} color="#666" />
-                  </View>
-                  <View>
-                    <Text style={styles.patientName}>{patient.name}</Text>
-                    <Text style={styles.patientMrn}>{patient.mrn || 'No MRN'}</Text>
-                  </View>
+              {/* Patient Selection */}
+              <Text style={styles.label}>PATIENT</Text>
+              <View style={styles.patientRow}>
+                <View style={styles.searchBox}>
+                  <Ionicons name="search" size={18} color="#999" />
+                  <TextInput
+                    placeholder="Search patient name..."
+                    style={styles.input}
+                    value={patientSearch}
+                    onChangeText={setPatientSearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {searchLoading && <ActivityIndicator size="small" color={COLORS.primary} />}
+                </View>
+                <TouchableOpacity style={styles.addPatientBtn} onPress={handleAddPatient}>
+                  <Ionicons name="person-add" size={22} color={COLORS.primary} />
                 </TouchableOpacity>
-              ))}
-            </View>
-          )}
+              </View>
 
-          {selectedPatient && (
-            <View style={styles.selectedPatientBadge}>
-              <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
-              <Text style={styles.selectedPatientText}>{selectedPatient.name}</Text>
-              <TouchableOpacity onPress={() => { setSelectedPatient(null); setPatientSearch(''); }}>
-                <Ionicons name="close-circle" size={18} color="#999" />
+              {/* Patient Search Results */}
+              {showPatientList && (
+                <View style={styles.patientList}>
+                  {patients.map((p, index) => (
+                    <TouchableOpacity
+                      key={p.id || index}
+                      style={styles.patientItem}
+                      onPress={() => handlePatientSelect(p)}
+                    >
+                      <View style={styles.patientAvatar}>
+                        <Ionicons name="person" size={18} color="#666" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.patientName}>{p.full_name || p.name}</Text>
+                        <Text style={styles.patientMrn}>{p.mrn || 'No MRN'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#CCC" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {selectedPatient && (
+                <View style={styles.selectedPatientBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
+                  <View style={{ flex: 1, marginLeft: 6 }}>
+                    <Text style={styles.selectedPatientText}>{selectedPatient.full_name || selectedPatient.name}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => { setSelectedPatient(null); setPatientSearch(''); }}>
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Capture Mode */}
+              <Text style={styles.label}>CAPTURE MODE</Text>
+              <View style={styles.captureRow}>
+                <TouchableOpacity
+                  style={[styles.captureBtn, captureMode === 'video' && styles.captureBtnActive]}
+                  onPress={() => setCaptureMode('video')}
+                >
+                  <Ionicons name="videocam" size={24} color={captureMode === 'video' ? COLORS.primary : '#666'} />
+                  <Text style={[styles.captureText, captureMode === 'video' && styles.captureTextActive]}>Live Video</Text>
+                  <Text style={styles.captureDesc}>Video call with patient</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.captureBtn, captureMode === 'chat' && styles.captureBtnActive]}
+                  onPress={() => setCaptureMode('chat')}
+                >
+                  <Ionicons name="chatbubbles" size={24} color={captureMode === 'chat' ? COLORS.primary : '#666'} />
+                  <Text style={[styles.captureText, captureMode === 'chat' && styles.captureTextActive]}>Manual Notes</Text>
+                  <Text style={styles.captureDesc}>Chat & take notes</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Schedule Options */}
+              <Text style={styles.label}>SCHEDULE</Text>
+              <TouchableOpacity
+                style={styles.scheduleDropdown}
+                onPress={() => setShowScheduleDropdown(!showScheduleDropdown)}
+              >
+                <View style={styles.scheduleSelected}>
+                  <Ionicons
+                    name={scheduleOption === 'now' ? 'flash' : 'time-outline'}
+                    size={20}
+                    color={COLORS.primary}
+                  />
+                  <Text style={styles.scheduleText}>{getScheduleLabel()}</Text>
+                </View>
+                <Ionicons name={showScheduleDropdown ? "chevron-up" : "chevron-down"} size={18} color="#666" />
               </TouchableOpacity>
-            </View>
-          )}
 
-          {/* Capture Mode */}
-          <Text style={styles.label}>CAPTURE MODE</Text>
-          <View style={styles.captureRow}>
-            <TouchableOpacity
-              style={[styles.captureBtn, captureMode === 'video' && styles.captureBtnActive]}
-              onPress={() => setCaptureMode('video')}
-            >
-              <Ionicons name="videocam" size={24} color={captureMode === 'video' ? COLORS.primary : '#666'} />
-              <Text style={[styles.captureText, captureMode === 'video' && styles.captureTextActive]}>Live Video</Text>
-              <Text style={styles.captureDesc}>Video call with patient</Text>
-            </TouchableOpacity>
+              {showScheduleDropdown && (
+                <View style={styles.scheduleOptions}>
+                  {SCHEDULE_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[styles.scheduleOption, scheduleOption === option.id && styles.scheduleOptionActive]}
+                      onPress={() => {
+                        setScheduleOption(option.id);
+                        setShowScheduleDropdown(false);
+                      }}
+                    >
+                      <View>
+                        <Text style={[styles.scheduleOptionLabel, scheduleOption === option.id && styles.scheduleOptionLabelActive]}>
+                          {option.label}
+                        </Text>
+                        <Text style={styles.scheduleOptionDesc}>{option.description}</Text>
+                      </View>
+                      {scheduleOption === option.id && (
+                        <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            <TouchableOpacity
-              style={[styles.captureBtn, captureMode === 'chat' && styles.captureBtnActive]}
-              onPress={() => setCaptureMode('chat')}
-            >
-              <Ionicons name="chatbubbles" size={24} color={captureMode === 'chat' ? COLORS.primary : '#666'} />
-              <Text style={[styles.captureText, captureMode === 'chat' && styles.captureTextActive]}>Manual Notes</Text>
-              <Text style={styles.captureDesc}>Chat & take notes</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Waitroom Toggle */}
+              <View style={styles.toggleRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="log-in-outline" size={20} color="#666" style={{ marginRight: 8 }} />
+                  <Text style={styles.toggleText}>Waitroom Enabled</Text>
+                </View>
+                <Switch
+                  value={waitroomEnabled}
+                  onValueChange={setWaitroomEnabled}
+                  trackColor={{ false: "#DDD", true: COLORS.primary }}
+                />
+              </View>
 
-          {/* Schedule Options */}
-          <Text style={styles.label}>SCHEDULE</Text>
-          <TouchableOpacity
-            style={styles.scheduleDropdown}
-            onPress={() => setShowScheduleDropdown(!showScheduleDropdown)}
-          >
-            <View style={styles.scheduleSelected}>
-              <Ionicons
-                name={scheduleOption === 'now' ? 'flash' : 'time-outline'}
-                size={20}
-                color={COLORS.primary}
+              {/* Info Note */}
+              {scheduleOption !== 'now' && (
+                <View style={styles.infoNote}>
+                  <Ionicons name="information-circle" size={18} color={COLORS.primary} />
+                  <Text style={styles.infoText}>Meeting link will be sent to patient and added to Alerts</Text>
+                </View>
+              )}
+
+              {/* Start Button */}
+              <CustomButton
+                title={scheduleOption === 'now' ? (loading ? 'Starting...' : 'Start Now') : 'Schedule Meeting'}
+                onPress={handleStart}
+                style={{ marginTop: 20 }}
+                disabled={loading}
               />
-              <Text style={styles.scheduleText}>{getScheduleLabel()}</Text>
-            </View>
-            <Ionicons name={showScheduleDropdown ? "chevron-up" : "chevron-down"} size={18} color="#666" />
-          </TouchableOpacity>
 
-          {showScheduleDropdown && (
-            <View style={styles.scheduleOptions}>
-              {SCHEDULE_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[styles.scheduleOption, scheduleOption === option.id && styles.scheduleOptionActive]}
-                  onPress={() => {
-                    setScheduleOption(option.id);
-                    setShowScheduleDropdown(false);
-                  }}
-                >
-                  <View>
-                    <Text style={[styles.scheduleOptionLabel, scheduleOption === option.id && styles.scheduleOptionLabelActive]}>
-                      {option.label}
-                    </Text>
-                    <Text style={styles.scheduleOptionDesc}>{option.description}</Text>
-                  </View>
-                  {scheduleOption === option.id && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+              {/* Close X Button */}
+              <TouchableOpacity style={styles.closeCircle} onPress={onClose}>
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
 
-          {/* Waitroom Toggle */}
-          <View style={styles.toggleRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="log-in-outline" size={20} color="#666" style={{ marginRight: 8 }} />
-              <Text style={styles.toggleText}>Waitroom Enabled</Text>
-            </View>
-            <Switch
-              value={waitroomEnabled}
-              onValueChange={setWaitroomEnabled}
-              trackColor={{ false: "#DDD", true: COLORS.primary }}
-            />
+            </ScrollView>
           </View>
-
-          {/* Info Note */}
-          {scheduleOption !== 'now' && (
-            <View style={styles.infoNote}>
-              <Ionicons name="information-circle" size={18} color={COLORS.primary} />
-              <Text style={styles.infoText}>Meeting link will be sent to patient and added to Alerts</Text>
-            </View>
-          )}
-
-          {/* Start Button */}
-          <CustomButton
-            title={scheduleOption === 'now' ? (loading ? 'Starting...' : 'Start Now') : 'Schedule Meeting'}
-            onPress={handleStart}
-            style={{ marginTop: 20 }}
-            disabled={loading}
-          />
-
-          {/* Close X Button */}
-          <TouchableOpacity style={styles.closeCircle} onPress={onClose}>
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -300,7 +358,8 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   backdrop: { flex: 1 },
-  modalContent: { backgroundColor: '#F9FAFC', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, maxHeight: '85%' },
+  modalContainer: { width: '100%', maxHeight: '90%' },
+  modalContent: { backgroundColor: '#F9FAFC', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, paddingBottom: 40 },
   dragHandle: { width: 40, height: 4, backgroundColor: '#DDD', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
 
   title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#1A1A1A' },

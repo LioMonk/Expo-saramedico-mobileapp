@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { CustomButton } from '../../components/CustomComponents';
+import DoctorAIChatScreen from './DoctorAIChatScreen';
+import { doctorAPI } from '../../services/api';
 
-export default function DoctorAnalyzedResultScreen({ navigation }) {
+export default function DoctorAnalyzedResultScreen({ navigation, route }) {
+  const { documentId, fileName, patient } = route?.params || {};
+  const patientId = patient?.id;
   const [activeTab, setActiveTab] = useState('Timeline'); // 'Timeline' or 'Chat'
 
   return (
@@ -27,10 +31,14 @@ export default function DoctorAnalyzedResultScreen({ navigation }) {
         <View style={styles.docPreview}>
           <Text style={styles.docHeader}>MEDICAL REPORT</Text>
           <View style={styles.docLine} />
-          <Text style={styles.docText}><Text style={{ fontWeight: 'bold' }}>PATIENT:</Text> John Doe (ID: 4520)</Text>
-          <Text style={styles.docText}><Text style={{ fontWeight: 'bold' }}>EXAM:</Text> MRI LEFT KNEE</Text>
-          <Text style={styles.docText}><Text style={{ fontWeight: 'bold' }}>FINDINGS:</Text>{'\n'}The medial meniscus demonstrates a complex tear involving the posterior horn.</Text>
-          <View style={styles.highlight}><Text style={styles.highlightText}>There is moderate joint effusion present. The anterior cruciate ligament appears intact.</Text></View>
+          <Text style={styles.docText}>
+            <Text style={{ fontWeight: 'bold' }}>PATIENT:</Text> {patient?.full_name || patient?.name || 'Unknown Patient'} (MRN: {patient?.mrn || 'N/A'})
+          </Text>
+          <Text style={styles.docText}>
+            <Text style={{ fontWeight: 'bold' }}>DOC:</Text> {fileName || 'Uploaded Document'}
+          </Text>
+          <Text style={styles.docText}><Text style={{ fontWeight: 'bold' }}>FINDINGS:</Text>{'\n'}Document analyzed successfully and embedded into patient record.</Text>
+          <View style={styles.highlight}><Text style={styles.highlightText}>You can now chat with the AI about this patient's full medical context.</Text></View>
         </View>
 
         {/* Tab Switcher */}
@@ -52,7 +60,16 @@ export default function DoctorAnalyzedResultScreen({ navigation }) {
 
         {/* Tab Content */}
         <View style={styles.tabContent}>
-          {activeTab === 'Timeline' ? <TimelineView /> : <ChatView navigation={navigation} />}
+          {activeTab === 'Timeline' ? (
+            <TimelineView patientId={patientId} />
+          ) : (
+            <View style={{ flex: 1 }}>
+              <DoctorAIChatScreen
+                navigation={navigation}
+                route={{ params: { patientId: patientId, embedded: true } }}
+              />
+            </View>
+          )}
         </View>
 
       </View>
@@ -62,12 +79,79 @@ export default function DoctorAnalyzedResultScreen({ navigation }) {
 
 // --- SUB-COMPONENTS ---
 
-function TimelineView() {
-  const events = [
-    { date: 'Oct 12, 2024', title: 'MRI Left Knee Report', desc: 'Complex tear of the posterior horn of the medial meniscus. Moderate joint effusion.' },
-    { date: 'Sept 24, 2024', title: 'Orthopedic Consultation', desc: 'Patient presented with persistent knee pain following a fall. Physical exam suggested meniscal injury.' },
-    { date: 'Oct 12, 2024', title: 'MRI Left Knee Report', desc: 'Complex tear of the posterior horn of the medial meniscus. Moderate joint effusion.' },
-  ];
+function TimelineView({ patientId }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (patientId) loadTimeline();
+  }, [patientId]);
+
+  const loadTimeline = async () => {
+    setLoading(true);
+    try {
+      // Fetch documents
+      const docsRes = await doctorAPI.getPatientDocuments(patientId).catch(() => ({ data: [] }));
+      const docs = docsRes.data || [];
+
+      // Fetch appointments
+      const apptsRes = await doctorAPI.getAppointments().catch(() => ({ data: [] }));
+      const allAppts = apptsRes.data || [];
+      const myAppts = allAppts.filter(a => a.patient_id === patientId);
+
+      const timelineData = [];
+
+      docs.forEach(doc => {
+        timelineData.push({
+          dateObj: new Date(doc.uploaded_at || doc.created_at),
+          title: doc.file_name || 'Medical Document',
+          desc: `Document Category: ${doc.category || 'General'}\nUploaded by: Doctor`,
+          type: 'document'
+        });
+      });
+
+      myAppts.forEach(appt => {
+        timelineData.push({
+          dateObj: new Date(appt.requested_date || appt.created_at),
+          title: 'Consultation Appointment',
+          desc: `Status: ${appt.status}\nReason: ${appt.reason}`,
+          type: 'appointment'
+        });
+      });
+
+      // Sort descending
+      timelineData.sort((a, b) => b.dateObj - a.dateObj);
+
+      // Format date String
+      const formatted = timelineData.map(item => ({
+        date: item.dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        title: item.title,
+        desc: item.desc
+      }));
+
+      setEvents(formatted);
+    } catch (error) {
+      console.error('Error loading timeline:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#999' }}>No history found for this patient.</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} style={{ paddingTop: 10 }}>

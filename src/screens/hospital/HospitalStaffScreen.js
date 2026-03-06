@@ -1,0 +1,329 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+    View, Text, ScrollView, StyleSheet, TouchableOpacity,
+    ActivityIndicator, RefreshControl, TextInput, Alert, Modal,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { hospitalAPI, teamAPI } from '../../services/api';
+
+const PALETTE = {
+    blue: '#3B82F6', bluLight: '#EFF6FF',
+    green: '#10B981', greenLight: '#F0FDF4',
+    amber: '#F59E0B', amberLight: '#FFFBEB',
+    red: '#EF4444', redLight: '#FEF2F2',
+    purple: '#8B5CF6', purpleLight: '#EDE9FE',
+    bg: '#F8FAFC', card: '#FFFFFF',
+    text: '#0F172A', sub: '#64748B', border: '#E2E8F0',
+};
+
+const ROLE_COLORS = {
+    doctor: { color: PALETTE.blue, bg: PALETTE.bluLight },
+    patient: { color: PALETTE.green, bg: PALETTE.greenLight },
+    hospital: { color: PALETTE.purple, bg: PALETTE.purpleLight },
+    admin: { color: PALETTE.amber, bg: PALETTE.amberLight },
+    default: { color: PALETTE.sub, bg: '#F1F5F9' },
+};
+
+export default function HospitalStaffScreen({ navigation }) {
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [search, setSearch] = useState('');
+    const [staff, setStaff] = useState([]);
+    const [orgId, setOrgId] = useState(null);
+
+    // Invite modal state
+    const [showInvite, setShowInvite] = useState(false);
+    const [invEmail, setInvEmail] = useState('');
+    const [invName, setInvName] = useState('');
+    const [invRole, setInvRole] = useState('MEMBER');
+    const [invTitle, setInvTitle] = useState('');
+    const [inviting, setInviting] = useState(false);
+
+    useEffect(() => { loadStaff(); }, []);
+
+    const loadStaff = async () => {
+        try {
+            setLoading(true);
+            const [staffRes, orgRes] = await Promise.all([
+                hospitalAPI.getStaff(),
+                hospitalAPI.getOrganization(),
+            ]);
+            const staffList = staffRes.data || [];
+            setStaff(staffList.map(s => ({
+                id: s.id,
+                name: s.name || s.full_name || 'Unknown',
+                role: s.role || 'Staff',
+                specialty: s.specialty || '',
+                email: s.email || '',
+                phone: s.phone || '',
+                status: s.status || 'Active',
+                lastAccessed: s.last_accessed || s.created_at || '',
+            })));
+            if (orgRes.data?.id) setOrgId(orgRes.data.id);
+        } catch (err) {
+            console.error('Staff load error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await loadStaff();
+        setRefreshing(false);
+    }, []);
+
+    const handleInvite = async () => {
+        if (!invEmail.trim() || !invName.trim()) {
+            Alert.alert('Missing Fields', 'Email and full name are required.');
+            return;
+        }
+        if (!invEmail.includes('@')) {
+            Alert.alert('Invalid Email', 'Please enter a valid email address.');
+            return;
+        }
+        setInviting(true);
+        try {
+            await teamAPI.inviteTeamMember({
+                email: invEmail.trim(),
+                full_name: invName.trim(),
+                role: invRole,
+                department_id: orgId || '00000000-0000-0000-0000-000000000000',
+                department_role: invTitle.trim() || (invRole === 'MEMBER' ? 'Physician' : 'Hospital Manager'),
+            });
+            Alert.alert('✅ Invitation Sent', `An invitation was sent to ${invEmail}.`);
+            setShowInvite(false);
+            setInvEmail(''); setInvName(''); setInvTitle(''); setInvRole('MEMBER');
+            loadStaff();
+        } catch (e) {
+            const detail = e.response?.data?.detail;
+            const msg = Array.isArray(detail) ? detail.map(d => d.msg).join('\n') : (detail || 'Failed to send invitation.');
+            Alert.alert('Error', msg);
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const filtered = staff.filter(s => {
+        const q = search.toLowerCase();
+        return (s.name || '').toLowerCase().includes(q) ||
+            (s.role || '').toLowerCase().includes(q) ||
+            (s.email || '').toLowerCase().includes(q) ||
+            (s.specialty || '').toLowerCase().includes(q);
+    });
+
+    const getRoleColor = (role) => {
+        const r = (role || '').toLowerCase();
+        return ROLE_COLORS[r] || ROLE_COLORS.default;
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color={PALETTE.blue} />
+                    <Text style={{ color: PALETTE.sub, marginTop: 12 }}>Loading staff…</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    return (
+        <SafeAreaView style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={22} color={PALETTE.text} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Staff Management</Text>
+                <TouchableOpacity style={styles.inviteBtn} onPress={() => setShowInvite(true)}>
+                    <Ionicons name="person-add" size={18} color={PALETTE.blue} />
+                </TouchableOpacity>
+            </View>
+
+            {/* Metrics */}
+            <View style={styles.metricsRow}>
+                <View style={styles.metricCard}>
+                    <Text style={styles.metricValue}>{staff.length}</Text>
+                    <Text style={styles.metricLabel}>Total Staff</Text>
+                </View>
+                <View style={styles.metricCard}>
+                    <Text style={[styles.metricValue, { color: PALETTE.blue }]}>
+                        {staff.filter(s => ['doctor', 'physician'].includes((s.role || '').toLowerCase())).length}
+                    </Text>
+                    <Text style={styles.metricLabel}>Doctors</Text>
+                </View>
+                <View style={styles.metricCard}>
+                    <Text style={[styles.metricValue, { color: PALETTE.green }]}>
+                        {staff.filter(s => s.status?.toLowerCase() === 'active').length}
+                    </Text>
+                    <Text style={styles.metricLabel}>Active</Text>
+                </View>
+            </View>
+
+            {/* Invite Button Banner */}
+            <TouchableOpacity style={styles.inviteBanner} onPress={() => setShowInvite(true)}>
+                <View style={styles.inviteBannerIcon}>
+                    <Ionicons name="person-add-outline" size={20} color={PALETTE.blue} />
+                </View>
+                <Text style={styles.inviteBannerText}>Invite Doctor</Text>
+                <Ionicons name="chevron-forward" size={18} color={PALETTE.blue} />
+            </TouchableOpacity>
+
+            {/* Search */}
+            <View style={styles.searchContainer}>
+                <Ionicons name="search-outline" size={18} color={PALETTE.sub} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search staff…"
+                    placeholderTextColor="#94A3B8"
+                    value={search}
+                    onChangeText={setSearch}
+                />
+                {search.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearch('')}>
+                        <Ionicons name="close-circle" size={18} color={PALETTE.sub} />
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.list}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PALETTE.blue]} />}
+            >
+                {filtered.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                        <Ionicons name="people-outline" size={52} color="#CBD5E1" />
+                        <Text style={styles.emptyText}>No staff members found</Text>
+                    </View>
+                ) : filtered.map((member, i) => {
+                    const rc = getRoleColor(member.role);
+                    return (
+                        <View key={member.id || i} style={styles.card}>
+                            <View style={[styles.avatar, { backgroundColor: rc.bg }]}>
+                                <Text style={[styles.avatarText, { color: rc.color }]}>
+                                    {(member.name || 'S').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.name}>{member.name}</Text>
+                                <Text style={styles.email}>{member.email}</Text>
+                                {member.specialty ? <Text style={styles.specialty}>{member.specialty}</Text> : null}
+                            </View>
+                            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                                <View style={[styles.roleBadge, { backgroundColor: rc.bg }]}>
+                                    <Text style={[styles.roleText, { color: rc.color }]}>{member.role}</Text>
+                                </View>
+                                <View style={[styles.statusBadge, { backgroundColor: member.status === 'Active' ? PALETTE.greenLight : PALETTE.amberLight }]}>
+                                    <Text style={[styles.statusText, { color: member.status === 'Active' ? PALETTE.green : PALETTE.amber }]}>
+                                        {member.status || 'Active'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                    );
+                })}
+                <View style={{ height: 80 }} />
+            </ScrollView>
+
+            {/* Invite Modal */}
+            <Modal visible={showInvite} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Invite Doctor</Text>
+                            <TouchableOpacity onPress={() => setShowInvite(false)}>
+                                <Ionicons name="close" size={22} color={PALETTE.text} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.fieldLabel}>Full Name *</Text>
+                        <TextInput style={styles.fieldInput} placeholder="Dr. Jane Smith" value={invName} onChangeText={setInvName} placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>Email Address *</Text>
+                        <TextInput style={styles.fieldInput} placeholder="doctor@example.com" value={invEmail} onChangeText={setInvEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>Title / Specialty</Text>
+                        <TextInput style={styles.fieldInput} placeholder="e.g. Senior Physician / Cardiologist" value={invTitle} onChangeText={setInvTitle} placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>Role</Text>
+                        <View style={styles.roleRow}>
+                            {[
+                                { label: 'Doctor\n(MEMBER)', value: 'MEMBER' },
+                                { label: 'Manager\n(ADMIN)', value: 'ADMINISTRATOR' },
+                            ].map(r => (
+                                <TouchableOpacity
+                                    key={r.value}
+                                    style={[styles.roleChip, invRole === r.value && styles.roleChipActive]}
+                                    onPress={() => setInvRole(r.value)}
+                                >
+                                    <Text style={[styles.roleChipText, invRole === r.value && styles.roleChipTextActive]}>{r.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        <Text style={styles.note}>
+                            ℹ️ Note from Hospitalflow.pdf: Use "MEMBER" for Doctors, "ADMINISTRATOR" for Hospital Managers.
+                        </Text>
+                        <TouchableOpacity style={[styles.createBtn, inviting && { opacity: 0.6 }]} onPress={handleInvite} disabled={inviting}>
+                            {inviting ? <ActivityIndicator color="white" /> : (
+                                <>
+                                    <Ionicons name="send" size={16} color="white" />
+                                    <Text style={styles.createBtnText}>Send Invitation</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        </SafeAreaView>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: PALETTE.bg },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    list: { paddingHorizontal: 20 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: PALETTE.card, borderBottomWidth: 1, borderBottomColor: PALETTE.border },
+    backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: PALETTE.bg, justifyContent: 'center', alignItems: 'center' },
+    headerTitle: { fontSize: 17, fontWeight: '800', color: PALETTE.text },
+    inviteBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: PALETTE.bluLight, justifyContent: 'center', alignItems: 'center' },
+
+    metricsRow: { flexDirection: 'row', padding: 20, gap: 10 },
+    metricCard: { flex: 1, backgroundColor: PALETTE.card, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border },
+    metricValue: { fontSize: 24, fontWeight: '800', color: PALETTE.text },
+    metricLabel: { fontSize: 11, color: PALETTE.sub, fontWeight: '600', marginTop: 2 },
+
+    inviteBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.bluLight, marginHorizontal: 20, marginBottom: 16, borderRadius: 14, padding: 14, gap: 12, borderWidth: 1, borderColor: '#BFDBFE' },
+    inviteBannerIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' },
+    inviteBannerText: { flex: 1, fontSize: 14, fontWeight: '700', color: PALETTE.blue },
+
+    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.card, marginHorizontal: 20, marginBottom: 12, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, gap: 10, borderWidth: 1, borderColor: PALETTE.border },
+    searchInput: { flex: 1, fontSize: 14, color: PALETTE.text },
+
+    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.card, borderRadius: 16, padding: 14, marginBottom: 10, gap: 12, borderWidth: 1, borderColor: PALETTE.border },
+    avatar: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    avatarText: { fontSize: 15, fontWeight: '800' },
+    name: { fontSize: 14, fontWeight: '700', color: PALETTE.text },
+    email: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
+    specialty: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+    roleBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+    roleText: { fontSize: 10, fontWeight: '800' },
+    statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+    statusText: { fontSize: 10, fontWeight: '800' },
+
+    emptyContainer: { alignItems: 'center', paddingTop: 60, gap: 12 },
+    emptyText: { fontSize: 15, color: PALETTE.sub, fontWeight: '600' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: PALETTE.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    modalTitle: { fontSize: 18, fontWeight: '800', color: PALETTE.text },
+    fieldLabel: { fontSize: 13, fontWeight: '700', color: PALETTE.text, marginBottom: 6, marginTop: 12 },
+    fieldInput: { backgroundColor: PALETTE.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: PALETTE.text, borderWidth: 1, borderColor: PALETTE.border },
+    roleRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    roleChip: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: PALETTE.border, alignItems: 'center', backgroundColor: PALETTE.bg },
+    roleChipActive: { backgroundColor: PALETTE.bluLight, borderColor: PALETTE.blue },
+    roleChipText: { fontSize: 12, fontWeight: '700', color: PALETTE.sub, textAlign: 'center' },
+    roleChipTextActive: { color: PALETTE.blue },
+    note: { fontSize: 11, color: PALETTE.sub, marginTop: 12, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10 },
+    createBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: PALETTE.blue, borderRadius: 14, paddingVertical: 14, marginTop: 16 },
+    createBtnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+});

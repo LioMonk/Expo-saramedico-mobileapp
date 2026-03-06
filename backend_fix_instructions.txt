@@ -1,0 +1,17 @@
+The error "Error -3 connecting to redis:6379. Temporary failure in name resolution." means your backend Celery worker on the EC2 server (http://107.20.98.130:8000) cannot connect to the Redis database anymore. Since the hostname "redis" is failing to resolve to an IP address, this usually means the Redis Docker container went down, or the `/etc/hosts` record for Redis was removed.
+
+Because I do not have your AWS SSH key to log into `107.20.98.130`, I cannot fix the server directly. You will need to SSH into your server and restart your Redis / Backend services:
+
+```bash
+ssh ubuntu@107.20.98.130
+cd Sara_medical_backend-main
+# If you are using docker:
+docker restart redis
+# Or if you are using docker-compose:
+docker-compose up -d
+# Then restart celery:
+sudo systemctl restart celery # or whichever command you use to run celery
+```
+
+Alternatively, I noticed you have another backend URL commented out in your mobile app's `.env` file: `http://65.0.98.170:8000`. 
+Would you like me to switch the app to use this backup server instead?

@@ -56,12 +56,17 @@ export const CustomInput = ({
   );
 };
 
-export const CustomButton = ({ title, onPress, type = 'PRIMARY' }) => {
+export const CustomButton = ({ title, onPress, type = 'PRIMARY', disabled = false }) => {
   return (
     <TouchableOpacity
-      style={[styles.button, type === 'SECONDARY' ? styles.btnSecondary : styles.btnPrimary]}
+      style={[
+        styles.button,
+        type === 'SECONDARY' ? styles.btnSecondary : styles.btnPrimary,
+        disabled && { opacity: 0.5 }
+      ]}
       onPress={onPress}
       activeOpacity={0.8}
+      disabled={disabled}
     >
       <Text style={[styles.btnText, type === 'SECONDARY' ? styles.btnTextSec : styles.btnTextPri]}>
         {title}

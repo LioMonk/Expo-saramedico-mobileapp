@@ -24,9 +24,8 @@ const getEnvVar = (key, defaultValue = '') => {
  */
 const getBaseUrl = () => {
     // Read environment configuration
-    // Force local environment to fix caching issue
-    const apiEnvironment = 'local'; // getEnvVar('API_ENVIRONMENT', 'local').toLowerCase();
-    const awsApiUrl = getEnvVar('AWS_API_URL', 'http://65.0.98.170:8000');
+    const apiEnvironment = getEnvVar('API_ENVIRONMENT', 'aws').toLowerCase();
+    const awsApiUrl = getEnvVar('AWS_API_URL', 'http://107.20.98.130:8000');
     const localApiHost = getEnvVar('LOCAL_API_HOST', '10.0.2.2');
     const localApiPort = getEnvVar('LOCAL_API_PORT', '8000');
 

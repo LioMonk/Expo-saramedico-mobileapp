@@ -6,11 +6,15 @@ import {
     ScrollView,
     Alert,
     Platform,
+    TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput, Card, Checkbox, Avatar } from 'react-native-paper';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import { patientAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
+import { COLORS } from '../../constants/theme';
 
 /**
  * Appointment Booking Screen
@@ -21,18 +25,31 @@ export default function AppointmentBookingScreen({ route, navigation }) {
     const { doctor } = route.params;
 
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [showDatePicker, setShowDatePicker] = useState(false);
     const [reason, setReason] = useState('');
     const [grantAccess, setGrantAccess] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // Picker state
+    const [showPicker, setShowPicker] = useState(false);
+    const [pickerMode, setPickerMode] = useState('date'); // 'date' or 'time'
+
     /**
      * Handle date change
      */
-    const onDateChange = (event, date) => {
-        setShowDatePicker(Platform.OS === 'ios');
-        if (date) {
-            setSelectedDate(date);
+    const onDateChange = (event, newDate) => {
+        // For iOS, the picker remains open until confirmed/cancelled, so we only hide it on 'set' or 'cancel'
+        // For Android, the picker closes automatically after selection
+        if (Platform.OS === 'android') {
+            setShowPicker(false);
+        } else if (event.type === 'set') { // 'set' for confirm, 'dismissed' for cancel on iOS
+            setShowPicker(false);
+        } else if (event.type === 'dismissed') {
+            setShowPicker(false);
+            return; // Do not update date if dismissed
+        }
+
+        if (newDate) {
+            setSelectedDate(newDate);
         }
     };
 
@@ -78,6 +95,15 @@ export default function AppointmentBookingScreen({ route, navigation }) {
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()}>
+                    <Ionicons name="arrow-back" size={24} color="#333" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Book Appointment</Text>
+                <View style={{ width: 24 }} />
+            </View>
+
             <ScrollView style={styles.container}>
                 <Card style={styles.card}>
                     <Card.Content>
@@ -99,19 +125,45 @@ export default function AppointmentBookingScreen({ route, navigation }) {
 
                         <Text style={styles.sectionTitle}>Appointment Details</Text>
 
-                        {/* Date Picker - Simple Text Input */}
+                        {/* Date & Time Selection */}
                         <View style={styles.dateContainer}>
-                            <Text style={styles.label}>Preferred Date & Time</Text>
-                            <TextInput
-                                mode="outlined"
-                                value={selectedDate.toLocaleString()}
-                                editable={false}
-                                right={<TextInput.Icon icon="calendar" />}
-                                style={styles.input}
-                            />
-                            <Text style={styles.helperText}>
-                                Default: {selectedDate.toLocaleDateString()} at {selectedDate.toLocaleTimeString()}
-                            </Text>
+                            <Text style={styles.label}>Preferred Date & Time *</Text>
+                            <View style={styles.dateTimeRow}>
+                                <TouchableOpacity
+                                    style={styles.dateTimeButton}
+                                    onPress={() => {
+                                        setPickerMode('date');
+                                        setShowPicker(true);
+                                    }}
+                                >
+                                    <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                                    <Text style={styles.dateTimeButtonText}>
+                                        {selectedDate.toLocaleDateString()}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.dateTimeButton}
+                                    onPress={() => {
+                                        setPickerMode('time');
+                                        setShowPicker(true);
+                                    }}
+                                >
+                                    <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+                                    <Text style={styles.dateTimeButtonText}>
+                                        {selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {showPicker && (
+                                <DateTimePicker
+                                    value={selectedDate}
+                                    mode={pickerMode}
+                                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                    onChange={onDateChange}
+                                />
+                            )}
                         </View>
 
                         {/* Reason Input */}
@@ -173,6 +225,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+    },
     card: {
         margin: 16,
     },
@@ -203,21 +270,39 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     dateContainer: {
-        marginBottom: 16,
+        marginBottom: 20,
     },
     label: {
         fontSize: 14,
         fontWeight: '600',
-        marginBottom: 8,
+        marginBottom: 10,
         color: '#333',
+    },
+    dateTimeRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    dateTimeButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        height: 56,
+    },
+    dateTimeButtonText: {
+        fontSize: 15,
+        color: '#333',
+        marginLeft: 4,
     },
     helperText: {
         fontSize: 12,
         color: '#666',
         marginTop: 4,
-    },
-    dateButton: {
-        justifyContent: 'center',
     },
     input: {
         marginBottom: 16,
@@ -230,6 +315,7 @@ const styles = StyleSheet.create({
     checkboxLabel: {
         fontSize: 16,
         marginLeft: 8,
+        color: '#333',
     },
     checkboxInfo: {
         fontSize: 12,
@@ -240,6 +326,8 @@ const styles = StyleSheet.create({
     },
     bookButton: {
         marginBottom: 16,
+        paddingVertical: 6,
+        backgroundColor: COLORS.primary,
     },
     infoText: {
         fontSize: 12,

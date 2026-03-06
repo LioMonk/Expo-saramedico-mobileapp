@@ -19,6 +19,7 @@ import { CustomInput, CustomButton } from '../../components/CustomComponents';
 import * as WebBrowser from 'expo-web-browser';
 
 import { authAPI, storeTokens, API_BASE_URL } from '../../services/api';
+import AuthService from '../../services/authService';
 import { Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -81,28 +82,28 @@ export default function LoginScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const response = await authAPI.login(email, password);
-      const { access_token, refresh_token, user } = response.data;
+      // Centralized auth service handles token storage + role routing
+      const { user, navTarget } = await AuthService.login(email, password);
 
-      // Store tokens and user data
-      await storeTokens(access_token, refresh_token, user);
-
-      console.log('Login successful for role:', user.role);
-
-      // Navigate based on the ACTUAL user role from backend
-      if (user.role === 'admin') {
-        navigation.replace('AdminFlow');
-      } else if (user.role === 'doctor') {
-        navigation.replace('DoctorFlow');
-      } else if (user.role === 'hospital') {
-        navigation.replace('HospitalFlow');
-      } else {
-        // Default: Patient
-        navigation.replace('PatientFlow');
-      }
+      console.log('[Auth] Login successful for role:', user.role);
+      navigation.replace(navTarget);
     } catch (error) {
-      console.error('Login error:', error);
-      const errorMessage = error.response?.data?.detail || 'Login failed. Please check your credentials.';
+      console.error('[Auth] Login error:', error);
+
+      let errorMessage = 'Login failed. Please check your credentials.';
+      const detail = error.response?.data?.detail;
+      const status = error.response?.status;
+
+      if (detail) {
+        errorMessage = detail;
+      } else if (status === 401) {
+        errorMessage = 'Incorrect email or password.';
+      } else if (status === 403) {
+        errorMessage = 'Account suspended or inactive. Please contact support.';
+      } else if (!error.response) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      }
+
       Alert.alert('Login Failed', errorMessage);
     } finally {
       setLoading(false);

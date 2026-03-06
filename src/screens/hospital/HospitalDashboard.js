@@ -1,97 +1,149 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
     ScrollView,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    Alert,
+    Modal,
+    TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { hospitalAPI, authAPI, teamAPI } from '../../services/api';
+import { hospitalAPI, calendarAPI, authAPI } from '../../services/api';
+
+const PALETTE = {
+    blue: '#3B82F6', bluLight: '#EFF6FF',
+    green: '#10B981', greenLight: '#F0FDF4',
+    amber: '#F59E0B', amberLight: '#FFFBEB',
+    purple: '#8B5CF6', purpleLight: '#EDE9FE',
+    bg: '#F8FAFC', card: '#FFFFFF',
+    text: '#0F172A', sub: '#64748B', border: '#E2E8F0',
+};
 
 export default function HospitalDashboard({ navigation }) {
-    const [isSidebarVisible, setIsSidebarVisible] = useState(false);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [hospitalName, setHospitalName] = useState('Hospital');
-    const [stats, setStats] = useState({
-        totalDoctors: 0,
-        totalPatients: 0,
-        todayAppointments: 0,
-        departments: 0,
-    });
+    const [orgName, setOrgName] = useState('Hospital');
+    const [orgId, setOrgId] = useState(null);
+    const [stats, setStats] = useState({ doctors: 0, patients: 0, staff: 0, consultations: 0 });
+    const [recentActivity, setRecentActivity] = useState([]);
+    const [todayEvents, setTodayEvents] = useState([]);
 
-    useEffect(() => {
-        loadDashboard();
-    }, []);
+    // Create Event Modal
+    const [showCreateEvent, setShowCreateEvent] = useState(false);
+    const [eventTitle, setEventTitle] = useState('');
+    const [eventDesc, setEventDesc] = useState('');
+    const [eventStart, setEventStart] = useState('');
+    const [eventEnd, setEventEnd] = useState('');
+    const [creatingEvent, setCreatingEvent] = useState(false);
+
+    useEffect(() => { loadDashboard(); }, []);
 
     const loadDashboard = async () => {
         try {
             setLoading(true);
 
-            // Load user profile
+            // 1. Profile
             try {
                 const profileRes = await authAPI.getCurrentUser();
-                setHospitalName(profileRes.data?.name || profileRes.data?.full_name || 'Hospital');
-            } catch (e) {
-                // Use default name if API fails
-                console.log('Using default hospital name');
-            }
+                const user = profileRes.data;
+                setOrgName(user?.organization_id ? 'Hospital' : 'Hospital');
+                setOrgId(user?.organization_id);
+            } catch (e) { /* silent */ }
 
-            // Try to load dashboard stats (may not exist yet)
+            // 2. Org info
             try {
-                const dashboardRes = await hospitalAPI.getDashboard();
-                if (dashboardRes.data) {
-                    setStats(dashboardRes.data);
-                }
-            } catch (e) {
-                console.log('Dashboard stats API not yet available on backend (404 expected). Returning 0 for stats.');
-                setStats({
-                    totalDoctors: 0,
-                    totalPatients: 0,
-                    todayAppointments: 0,
-                    departments: 0,
-                });
-            }
+                const orgRes = await hospitalAPI.getOrganization();
+                if (orgRes.data?.name) setOrgName(orgRes.data.name);
+                if (orgRes.data?.id) setOrgId(orgRes.data.id);
+            } catch (e) { /* silent */ }
 
-        } catch (error) {
-            console.log('Dashboard load info:', error.message);
+            // 3. Members count
+            try {
+                const membersRes = await hospitalAPI.getOrgMembers();
+                const members = membersRes.data || [];
+                const doctors = members.filter(m => m.role === 'doctor').length;
+                const patients = members.filter(m => m.role === 'patient').length;
+                const staff = members.length;
+                setStats(prev => ({ ...prev, doctors, patients, staff }));
+            } catch (e) { /* silent */ }
+
+            // 4. Consultations for recent activity
+            try {
+                const consRes = await hospitalAPI.getConsultations({ limit: 10 });
+                const consultations = consRes.data?.consultations || [];
+                setStats(prev => ({ ...prev, consultations: consRes.data?.total || consultations.length }));
+                setRecentActivity(consultations.slice(0, 5).map(c => ({
+                    id: c.id,
+                    type: 'consultation',
+                    text: `Consultation: ${c.patientName || 'Patient'} with ${c.doctorName || 'Doctor'}`,
+                    time: c.scheduledAt ? new Date(c.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+                    status: c.status,
+                })));
+            } catch (e) { /* silent */ }
+
+            // 5. Today's events
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const evRes = await calendarAPI.getDayAgenda(today);
+                setTodayEvents((evRes.data?.events || []).slice(0, 4));
+            } catch (e) { /* silent */ }
+
+        } catch (err) {
+            console.error('Dashboard load error:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    const onRefresh = async () => {
+    const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await loadDashboard();
         setRefreshing(false);
+    }, []);
+
+    const handleCreateEvent = async () => {
+        if (!eventTitle.trim() || !eventStart.trim() || !eventEnd.trim()) {
+            Alert.alert('Missing Fields', 'Title, start time, and end time are required.');
+            return;
+        }
+        setCreatingEvent(true);
+        try {
+            await calendarAPI.createEvent({
+                title: eventTitle.trim(),
+                description: eventDesc.trim(),
+                start_time: new Date(eventStart).toISOString(),
+                end_time: new Date(eventEnd).toISOString(),
+                all_day: false,
+                color: '#10B981',
+                reminder_minutes: 30,
+            });
+            Alert.alert('✅ Event Created', `"${eventTitle}" has been added to the calendar.`);
+            setShowCreateEvent(false);
+            setEventTitle(''); setEventDesc(''); setEventStart(''); setEventEnd('');
+            loadDashboard();
+        } catch (e) {
+            Alert.alert('Error', e.response?.data?.detail || 'Failed to create event.');
+        } finally {
+            setCreatingEvent(false);
+        }
     };
 
     const today = new Date();
-    const dateString = today.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-
-    const getGreeting = () => {
-        const hour = today.getHours();
-        if (hour < 12) return 'Good Morning';
-        if (hour < 17) return 'Good Afternoon';
-        return 'Good Evening';
-    };
+    const greeting = today.getHours() < 12 ? 'Good Morning' : today.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
+    const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                    <Text style={styles.loadingText}>Loading dashboard...</Text>
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color={PALETTE.blue} />
+                    <Text style={styles.loadingText}>Loading dashboard…</Text>
                 </View>
             </SafeAreaView>
         );
@@ -99,155 +151,207 @@ export default function HospitalDashboard({ navigation }) {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.contentContainer}>
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.scrollContent}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
-                    }
-                >
-
-                    {/* Greeting */}
-                    <Text style={styles.greeting}>{getGreeting()}, {hospitalName}</Text>
-                    <Text style={styles.dateText}>Today is {dateString}</Text>
-
-                    {/* Stats Cards */}
-                    <View style={styles.statsGrid}>
-                        <TouchableOpacity
-                            style={[styles.statCard, { backgroundColor: '#E3F2FD' }]}
-                            onPress={() => navigation.navigate('HospitalTeamScreen')}
-                        >
-                            <Ionicons name="medical" size={28} color="#2196F3" />
-                            <Text style={styles.statNumber}>{stats.totalDoctors}</Text>
-                            <Text style={styles.statLabel}>Doctors</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.statCard, { backgroundColor: '#E8F5E9' }]}
-                            onPress={() => { }}
-                        >
-                            <Ionicons name="people" size={28} color="#4CAF50" />
-                            <Text style={styles.statNumber}>{stats.totalPatients}</Text>
-                            <Text style={styles.statLabel}>Patients</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.statCard, { backgroundColor: '#FFF3E0' }]}
-                            onPress={() => navigation.navigate('HospitalScheduleScreen')}
-                        >
-                            <Ionicons name="calendar" size={28} color="#FF9800" />
-                            <Text style={styles.statNumber}>{stats.todayAppointments}</Text>
-                            <Text style={styles.statLabel}>Today's Appts</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.statCard, { backgroundColor: '#F3E5F5' }]}
-                            onPress={() => navigation.navigate('HospitalDepartmentsScreen')}
-                        >
-                            <Ionicons name="grid" size={28} color="#9C27B0" />
-                            <Text style={styles.statNumber}>{stats.departments}</Text>
-                            <Text style={styles.statLabel}>Departments</Text>
-                        </TouchableOpacity>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scroll}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PALETTE.blue]} />}
+            >
+                {/* ─── Header ─── */}
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.greeting}>{greeting}</Text>
+                        <Text style={styles.orgName}>{orgName}</Text>
+                        <Text style={styles.date}>{dateStr}</Text>
                     </View>
+                    <TouchableOpacity style={styles.notifBtn} onPress={() => { }}>
+                        <Ionicons name="notifications-outline" size={22} color={PALETTE.text} />
+                    </TouchableOpacity>
+                </View>
 
-                    {/* Quick Actions */}
-                    <Text style={styles.sectionTitle}>Quick Actions</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActions}>
+                {/* ─── Stats Grid ─── */}
+                <View style={styles.statsGrid}>
+                    {[
+                        { label: 'Doctors', value: stats.doctors, icon: 'medical', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalDirectoryScreen' },
+                        { label: 'Patients', value: stats.patients, icon: 'people', color: PALETTE.green, bg: PALETTE.greenLight, nav: 'HospitalPatientsScreen' },
+                        { label: 'Staff', value: stats.staff, icon: 'person', color: PALETTE.purple, bg: PALETTE.purpleLight, nav: 'HospitalStaffScreen' },
+                        { label: 'Consultations', value: stats.consultations, icon: 'calendar', color: PALETTE.amber, bg: PALETTE.amberLight, nav: 'HospitalAppointmentsScreen' },
+                    ].map(stat => (
                         <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={() => navigation.navigate('HospitalInviteTeamScreen')}
+                            key={stat.label}
+                            style={styles.statCard}
+                            onPress={() => navigation.navigate(stat.nav)}
+                            activeOpacity={0.8}
                         >
-                            <View style={[styles.actionIcon, { backgroundColor: '#E3F2FD' }]}>
-                                <Ionicons name="person-add" size={24} color="#2196F3" />
+                            <View style={[styles.statIcon, { backgroundColor: stat.bg }]}>
+                                <Ionicons name={stat.icon} size={20} color={stat.color} />
                             </View>
-                            <Text style={styles.actionLabel}>Add Team{'\n'}Member</Text>
+                            <Text style={styles.statValue}>{stat.value}</Text>
+                            <Text style={styles.statLabel}>{stat.label}</Text>
                         </TouchableOpacity>
+                    ))}
+                </View>
 
+                {/* ─── Quick Actions ─── */}
+                <Text style={styles.sectionTitle}>Quick Actions</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionsRow}>
+                    {[
+                        { label: 'Invite\nDoctor', icon: 'person-add', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalInviteTeamScreen' },
+                        { label: 'Directory', icon: 'grid', color: PALETTE.purple, bg: PALETTE.purpleLight, nav: 'HospitalDirectoryScreen' },
+                        { label: 'Patients', icon: 'people', color: PALETTE.green, bg: PALETTE.greenLight, nav: 'HospitalPatientsScreen' },
+                        { label: 'Staff', icon: 'briefcase', color: PALETTE.amber, bg: PALETTE.amberLight, nav: 'HospitalStaffScreen' },
+                        { label: 'Calendar', icon: 'calendar', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalAppointmentsScreen' },
+                        { label: 'Create\nEvent', icon: 'add-circle', color: PALETTE.green, bg: PALETTE.greenLight, onPress: () => setShowCreateEvent(true) },
+                        { label: 'Settings', icon: 'settings', color: PALETTE.sub, bg: PALETTE.border, nav: 'HospitalSettingsScreen' },
+                    ].map(a => (
                         <TouchableOpacity
+                            key={a.label}
                             style={styles.actionCard}
-                            onPress={() => navigation.navigate('HospitalDepartmentsScreen')}
+                            onPress={a.onPress || (() => navigation.navigate(a.nav))}
+                            activeOpacity={0.8}
                         >
-                            <View style={[styles.actionIcon, { backgroundColor: '#F3E5F5' }]}>
-                                <Ionicons name="add-circle" size={24} color="#9C27B0" />
+                            <View style={[styles.actionIcon, { backgroundColor: a.bg }]}>
+                                <Ionicons name={a.icon} size={22} color={a.color} />
                             </View>
-                            <Text style={styles.actionLabel}>Add{'\n'}Department</Text>
+                            <Text style={styles.actionLabel}>{a.label}</Text>
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={() => navigation.navigate('HospitalScheduleScreen')}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: '#FFF3E0' }]}>
-                                <Ionicons name="today" size={24} color="#FF9800" />
-                            </View>
-                            <Text style={styles.actionLabel}>View{'\n'}Schedule</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={() => navigation.navigate('HospitalSettingsScreen')}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: '#E8F5E9' }]}>
-                                <Ionicons name="settings" size={24} color="#4CAF50" />
-                            </View>
-                            <Text style={styles.actionLabel}>Hospital{'\n'}Settings</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-
-                    {/* Recent Activity */}
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Recent Activity</Text>
-                        <TouchableOpacity>
-                            <Text style={styles.viewAllText}>View All</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={[styles.activityCard, { alignItems: 'center', paddingVertical: 30 }]}>
-                        <Ionicons name="time-outline" size={48} color="#DDD" />
-                        <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>No recent activity to display.</Text>
-                    </View>
-
-                    <View style={{ height: 100 }} />
+                    ))}
                 </ScrollView>
-            </View>
+
+                {/* ─── Today's Events ─── */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Today's Events</Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('HospitalAppointmentsScreen')}>
+                        <Text style={styles.viewAll}>View All</Text>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.card}>
+                    {todayEvents.length === 0 ? (
+                        <View style={styles.emptyRow}>
+                            <Ionicons name="calendar-outline" size={32} color="#CBD5E1" />
+                            <Text style={styles.emptyText}>No events scheduled today</Text>
+                        </View>
+                    ) : todayEvents.map((ev, i) => (
+                        <View key={ev.id || i} style={[styles.eventRow, i < todayEvents.length - 1 && styles.divider]}>
+                            <View style={[styles.eventDot, { backgroundColor: ev.color || PALETTE.blue }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.eventTitle}>{ev.title}</Text>
+                                <Text style={styles.eventTime}>
+                                    {ev.start_time ? new Date(ev.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                    {ev.end_time ? ` – ${new Date(ev.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                </Text>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+
+                {/* ─── Recent Activity ─── */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Recent Activity</Text>
+                </View>
+                <View style={styles.card}>
+                    {recentActivity.length === 0 ? (
+                        <View style={styles.emptyRow}>
+                            <Ionicons name="time-outline" size={32} color="#CBD5E1" />
+                            <Text style={styles.emptyText}>No recent activity</Text>
+                        </View>
+                    ) : recentActivity.map((item, i) => (
+                        <View key={item.id || i} style={[styles.activityRow, i < recentActivity.length - 1 && styles.divider]}>
+                            <View style={[styles.activityDot, { backgroundColor: item.status === 'completed' ? PALETTE.green : PALETTE.blue }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.activityText}>{item.text}</Text>
+                                <Text style={styles.activityTime}>{item.time}</Text>
+                            </View>
+                            <View style={[styles.badge, { backgroundColor: item.status === 'completed' ? PALETTE.greenLight : PALETTE.bluLight }]}>
+                                <Text style={[styles.badgeText, { color: item.status === 'completed' ? PALETTE.green : PALETTE.blue }]}>
+                                    {item.status || 'scheduled'}
+                                </Text>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+
+                <View style={{ height: 100 }} />
+            </ScrollView>
+
+            {/* ─── Create Event Modal ─── */}
+            <Modal visible={showCreateEvent} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Create Event</Text>
+                            <TouchableOpacity onPress={() => setShowCreateEvent(false)}>
+                                <Ionicons name="close" size={22} color={PALETTE.text} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.fieldLabel}>Title *</Text>
+                        <TextInput style={styles.fieldInput} placeholder="e.g. Weekly Staff Meeting" value={eventTitle} onChangeText={setEventTitle} placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>Description</Text>
+                        <TextInput style={styles.fieldInput} placeholder="Optional notes" value={eventDesc} onChangeText={setEventDesc} placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>Start Time * (e.g. 2026-03-10 14:00)</Text>
+                        <TextInput style={styles.fieldInput} placeholder="YYYY-MM-DD HH:MM" value={eventStart} onChangeText={setEventStart} placeholderTextColor="#94A3B8" />
+                        <Text style={styles.fieldLabel}>End Time * (e.g. 2026-03-10 15:30)</Text>
+                        <TextInput style={styles.fieldInput} placeholder="YYYY-MM-DD HH:MM" value={eventEnd} onChangeText={setEventEnd} placeholderTextColor="#94A3B8" />
+                        <TouchableOpacity style={[styles.createBtn, creatingEvent && { opacity: 0.6 }]} onPress={handleCreateEvent} disabled={creatingEvent}>
+                            {creatingEvent ? <ActivityIndicator color="white" /> : <Text style={styles.createBtnText}>Create Event</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F9FAFC' },
-    contentContainer: { flex: 1 },
-    scrollContent: { padding: 20 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { marginTop: 15, color: '#666', fontSize: 14 },
+    container: { flex: 1, backgroundColor: PALETTE.bg },
+    scroll: { padding: 20 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    loadingText: { marginTop: 12, color: PALETTE.sub },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-    avatar: { width: 35, height: 35, borderRadius: 17.5, backgroundColor: '#4CAF50', justifyContent: 'center', alignItems: 'center' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+    greeting: { fontSize: 13, color: PALETTE.sub, fontWeight: '500' },
+    orgName: { fontSize: 22, fontWeight: '800', color: PALETTE.text, marginTop: 2 },
+    date: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
+    notifBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: PALETTE.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border },
 
-    greeting: { fontSize: 22, fontWeight: 'bold', color: '#1A1A1A' },
-    dateText: { fontSize: 13, color: '#666', marginBottom: 25, marginTop: 5 },
+    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
+    statCard: { width: '47%', backgroundColor: PALETTE.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: PALETTE.border, alignItems: 'flex-start' },
+    statIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+    statValue: { fontSize: 28, fontWeight: '800', color: PALETTE.text },
+    statLabel: { fontSize: 12, color: PALETTE.sub, fontWeight: '600', marginTop: 2 },
 
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 25 },
-    statCard: { width: '48%', padding: 15, borderRadius: 16, marginBottom: 12, alignItems: 'center' },
-    statNumber: { fontSize: 28, fontWeight: 'bold', color: '#333', marginTop: 8 },
-    statLabel: { fontSize: 13, color: '#666', marginTop: 4 },
+    sectionTitle: { fontSize: 16, fontWeight: '800', color: PALETTE.text, marginBottom: 12 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 },
+    viewAll: { fontSize: 13, color: PALETTE.blue, fontWeight: '700' },
 
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 15 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    viewAllText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
+    actionsRow: { marginBottom: 28 },
+    actionCard: { backgroundColor: PALETTE.card, borderRadius: 16, padding: 14, marginRight: 10, alignItems: 'center', width: 90, borderWidth: 1, borderColor: PALETTE.border },
+    actionIcon: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    actionLabel: { fontSize: 11, color: PALETTE.text, textAlign: 'center', fontWeight: '600' },
 
-    quickActions: { marginBottom: 25 },
-    actionCard: { backgroundColor: 'white', borderRadius: 16, padding: 15, marginRight: 12, alignItems: 'center', width: 100, borderWidth: 1, borderColor: '#F0F0F0' },
-    actionIcon: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-    actionLabel: { fontSize: 12, color: '#333', textAlign: 'center', fontWeight: '500' },
+    card: { backgroundColor: PALETTE.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: PALETTE.border, marginBottom: 20 },
+    divider: { borderBottomWidth: 1, borderBottomColor: PALETTE.border, paddingBottom: 12, marginBottom: 12 },
 
-    activityCard: { backgroundColor: 'white', borderRadius: 16, padding: 15, borderWidth: 1, borderColor: '#F0F0F0' },
-    activityItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-    activityIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    activityText: { flex: 1 },
-    activityTitle: { fontSize: 14, fontWeight: '500', color: '#333' },
-    activityTime: { fontSize: 12, color: '#999', marginTop: 2 },
-    divider: { height: 1, backgroundColor: '#F0F0F0' },
+    emptyRow: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+    emptyText: { color: PALETTE.sub, fontSize: 13 },
+
+    eventRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    eventDot: { width: 10, height: 10, borderRadius: 5 },
+    eventTitle: { fontSize: 14, fontWeight: '700', color: PALETTE.text },
+    eventTime: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
+
+    activityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    activityDot: { width: 8, height: 8, borderRadius: 4 },
+    activityText: { fontSize: 13, fontWeight: '600', color: PALETTE.text, flex: 1 },
+    activityTime: { fontSize: 11, color: PALETTE.sub, marginTop: 2 },
+    badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    badgeText: { fontSize: 10, fontWeight: '800' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: PALETTE.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 18, fontWeight: '800', color: PALETTE.text },
+    fieldLabel: { fontSize: 13, fontWeight: '700', color: PALETTE.text, marginBottom: 6, marginTop: 12 },
+    fieldInput: { backgroundColor: PALETTE.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: PALETTE.text, borderWidth: 1, borderColor: PALETTE.border },
+    createBtn: { backgroundColor: PALETTE.blue, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
+    createBtnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
 });
