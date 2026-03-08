@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Switch, ActivityIndicator, Alert
+   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,21 +8,26 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import SignOutModal from '../../components/SignOutModal';
-import { getUserData } from '../../services/api';
+import { getUserData, authAPI, doctorAPI } from '../../services/api';
+import { fixUserUrls, fixUrl } from '../../services/urlFixer';
 import AuthService from '../../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TOKEN_CONFIG } from '../../services/config';
 
 export default function DoctorSettingsScreen({ navigation }) {
-   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
    const [showSignOut, setShowSignOut] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [doctorData, setDoctorData] = useState({
-      name: 'Doctor',
-      specialty: 'General Practice',
-      avatar: null,
+   const [saving, setSaving] = useState(false);
+
+   // State mimicking Web profile state exactly
+   const [profile, setProfile] = useState({
+      full_name: '',
       email: '',
-      phone: '',
-      licenseNumber: ''
+      credentials: '',
+      specialty: '',
+      license_number: '',
+      avatar_url: null,
+      avatar_file: null // to hold pending upload avatar
    });
 
    useFocusEffect(
@@ -33,24 +38,42 @@ export default function DoctorSettingsScreen({ navigation }) {
 
    const loadDoctorProfile = async () => {
       try {
+         // 1. Fetch from local storage first
          const userData = await getUserData();
          if (userData) {
-            const cleanName = userData.full_name ? userData.full_name.replace(/^Dr\.\s*/i, '') : 'Doctor';
-            setDoctorData({
-               name: cleanName,
-               specialty: userData.specialty || 'General Practice',
-               avatar: userData.avatar || userData.avatar_url || null,
-               email: userData.email || '',
-               phone: userData.phone || '',
-               licenseNumber: userData.license_number || 'Not provided'
-            });
-            setIs2FAEnabled(userData.mfa_enabled || false);
+            updateUI(userData);
+         }
+
+         // 2. Fetch latest from API
+         const profileRes = await doctorAPI.getMe();
+         if (profileRes.data) {
+            const latestData = fixUserUrls(profileRes.data);
+            updateUI(latestData);
+
+            // Sync local storage
+            if (userData) {
+               const merged = { ...userData, ...latestData };
+               await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(merged));
+            }
          }
       } catch (error) {
          console.error('Error loading doctor profile:', error);
       } finally {
          setLoading(false);
       }
+   };
+
+   const updateUI = (data) => {
+      const cleanName = data.full_name ? data.full_name.replace(/^Dr\.\s*/i, '') : (data.name || 'Doctor');
+      setProfile({
+         full_name: cleanName,
+         email: data.email || '',
+         credentials: data.credentials || '',
+         specialty: data.specialty || '',
+         license_number: data.license_number || data.licenseNumber || '',
+         avatar_url: data.avatar || data.avatar_url || null,
+         avatar_file: null
+      });
    };
 
    const handleSignOut = async () => {
@@ -67,20 +90,8 @@ export default function DoctorSettingsScreen({ navigation }) {
       }
    };
 
-   const handle2FAToggle = async (value) => {
-      setIs2FAEnabled(value);
-      try {
-         // Mock MFA storage directly to user data since backend lacks endpoints
-         const userDataLocal = await AsyncStorage.getItem('@user_data');
-         if (userDataLocal) {
-            const parsed = JSON.parse(userDataLocal);
-            parsed.mfa_enabled = value;
-            await AsyncStorage.setItem('@user_data', JSON.stringify(parsed));
-         }
-      } catch (error) {
-         console.error('Error saving 2FA state locally:', error);
-      }
-      console.log('2FA toggled:', value);
+   const handleChange = (name, value) => {
+      setProfile(prev => ({ ...prev, [name]: value }));
    };
 
    const handleImagePick = async () => {
@@ -93,23 +104,64 @@ export default function DoctorSettingsScreen({ navigation }) {
          if (result.type === 'success' || !result.canceled) {
             const file = result.assets ? result.assets[0] : result;
             const imageUri = file.uri;
-            setDoctorData(prev => ({ ...prev, avatar: imageUri }));
 
-            // Save locally since backend doesn't support profile picture endpoint yet
-            const doctorProfile = await AsyncStorage.getItem('doctor_profile');
-            const parsedProfile = doctorProfile ? JSON.parse(doctorProfile) : {};
-            parsedProfile.avatar = imageUri;
-            await AsyncStorage.setItem('doctor_profile', JSON.stringify(parsedProfile));
-
-            const userDataLocal = await AsyncStorage.getItem('@user_data');
-            if (userDataLocal) {
-               const parsedUserData = JSON.parse(userDataLocal);
-               parsedUserData.avatar = imageUri;
-               await AsyncStorage.setItem('@user_data', JSON.stringify(parsedUserData));
-            }
+            // Set optimistically as a pending file map
+            setProfile(prev => ({ ...prev, avatar_file: imageUri }));
          }
       } catch (error) {
          console.error('Error picking image:', error);
+      }
+   };
+
+   const handleSave = async () => {
+      setSaving(true);
+      try {
+         let avatarUpdated = false;
+
+         // 1. Avatar upload if picked
+         if (profile.avatar_file) {
+            const uploadRes = await authAPI.uploadAvatar(profile.avatar_file);
+            const serverUrl = uploadRes.preview_url || uploadRes.avatar_url || uploadRes.url;
+            if (serverUrl) {
+               const fixedAvatarUrl = fixUrl(serverUrl);
+               setProfile(prev => ({ ...prev, avatar_url: fixedAvatarUrl, avatar_file: null }));
+               avatarUpdated = true;
+
+               // Save globally
+               const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
+               if (userDataLocal) {
+                  const parsedUserData = JSON.parse(userDataLocal);
+                  parsedUserData.avatar = serverUrl;
+                  parsedUserData.avatar_url = serverUrl;
+                  await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUserData));
+               }
+            }
+         }
+
+         // 2. Profile fields upload
+         const updatePayload = {
+            full_name: profile.full_name,
+            specialty: profile.specialty,
+            credentials: profile.credentials,
+            license_number: profile.license_number
+         };
+         await doctorAPI.updateProfile(updatePayload);
+
+         // Update local storage for full_name
+         const userDataStr = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
+         if (userDataStr) {
+            const parsed = JSON.parse(userDataStr);
+            parsed.full_name = profile.full_name;
+            parsed.specialty = profile.specialty;
+            await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsed));
+         }
+
+         Alert.alert('Success', 'Profile updated successfully!');
+      } catch (err) {
+         console.error('Error updating profile:', err);
+         Alert.alert('Error', 'Failed to update profile or avatar. Please try again.');
+      } finally {
+         setSaving(false);
       }
    };
 
@@ -120,7 +172,9 @@ export default function DoctorSettingsScreen({ navigation }) {
                <TouchableOpacity onPress={() => navigation.goBack()}>
                   <Ionicons name="arrow-back" size={24} color="#333" />
                </TouchableOpacity>
-               <Text style={styles.headerTitle}>My Profile</Text>
+               <View>
+                  <Text style={styles.headerTitle}>My Profile</Text>
+               </View>
                <View style={{ width: 24 }} />
             </View>
 
@@ -130,160 +184,111 @@ export default function DoctorSettingsScreen({ navigation }) {
                </View>
             ) : (
                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                  {/* Profile Header */}
-                  <View style={styles.profileHeader}>
-                     <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePick}>
-                        {doctorData.avatar ? (
-                           <Image source={{ uri: doctorData.avatar }} style={styles.avatar} />
-                        ) : (
-                           <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                              <Ionicons name="person" size={40} color="#999" />
-                           </View>
-                        )}
-                        <View style={styles.editBadge}>
-                           <Ionicons name="pencil" size={14} color="white" />
-                        </View>
-                     </TouchableOpacity>
-                     <Text style={styles.nameText}>Dr. {doctorData.name}</Text>
-                     <Text style={styles.roleText}>{doctorData.specialty.toUpperCase()}</Text>
-                  </View>
 
-                  {/* SERVICES Section */}
-                  <Text style={styles.sectionLabel}>SERVICES</Text>
-                  <View style={styles.card}>
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('DoctorAvailabilityScreen')}
-                     >
-                        <View style={styles.iconBox}><Ionicons name="time-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Availability</Text>
-                           <Text style={styles.itemSub}>Set your working hours</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
+                  {/* Web-Style Info Text */}
+                  <Text style={styles.description}>Manage your personal information and account details.</Text>
 
-                     <View style={styles.divider} />
+                  <View style={styles.profileCard}>
+                     {/* Exact Match Web Profile Header */}
+                     <View style={styles.profileCardContent}>
+                        <TouchableOpacity style={styles.avatarCircle} onPress={handleImagePick}>
+                           {profile.avatar_file || profile.avatar_url ? (
+                              <Image
+                                 source={{ uri: profile.avatar_file || profile.avatar_url }}
+                                 style={{ width: '100%', height: '100%' }}
+                              />
+                           ) : (
+                              <Text style={styles.avatarInitials}>
+                                 {profile.full_name ? profile.full_name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase() : "DR"}
+                              </Text>
+                           )}
+                        </TouchableOpacity>
 
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('DoctorCredentialsScreen', { licenseNumber: doctorData.licenseNumber })}
-                     >
-                        <View style={styles.iconBox}><Ionicons name="school-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Credentials</Text>
-                           <Text style={styles.itemSub}>{doctorData.licenseNumber}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
-
-                     <View style={styles.divider} />
-
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('DoctorServicesScreen', { specialty: doctorData.specialty })}
-                     >
-                        <View style={styles.iconBox}><Ionicons name="medkit-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Services Available</Text>
-                           <Text style={styles.itemSub}>{doctorData.specialty}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
-                  </View>
-
-                  {/* PERSONAL INFORMATION Section */}
-                  <Text style={styles.sectionLabel}>SECURITY</Text>
-                  <View style={styles.card}>
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('DoctorChangePasswordScreen')}
-                     >
-                        <View style={styles.iconBox}><Ionicons name="lock-closed-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Password</Text>
-                           <Text style={styles.itemSub}>Change via OTP verification</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
-
-                     <View style={styles.divider} />
-
-                     <View style={styles.row}>
-                        <View style={styles.iconBox}><Ionicons name="shield-checkmark-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Two-Factor Auth (MFA)</Text>
-                           <Text style={styles.itemSub}>{is2FAEnabled ? 'OTP required on login' : 'Disabled'}</Text>
-                        </View>
-                        <Switch
-                           value={is2FAEnabled}
-                           onValueChange={handle2FAToggle}
-                           trackColor={{ false: "#DDD", true: COLORS.primary }}
-                           thumbColor="white"
-                        />
-                     </View>
-                  </View>
-
-                  {/* CONTACT INFORMATION Section */}
-                  <Text style={styles.sectionLabel}>CONTACT INFORMATION</Text>
-                  <View style={styles.card}>
-                     <View style={styles.row}>
-                        <View style={styles.iconBox}><Ionicons name="mail-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Email</Text>
-                           <Text style={styles.itemSub}>{doctorData.email || 'Not provided'}</Text>
+                        <View style={styles.profileInfoColumn}>
+                           <Text style={styles.profileNameTitle}>{profile.full_name || "Doctor"}</Text>
+                           <Text style={styles.profileCredentialsSub}>
+                              {profile.credentials}{profile.credentials && profile.specialty ? ', ' : ''}{profile.specialty ? profile.specialty.toUpperCase() : ""}
+                           </Text>
+                           <TouchableOpacity onPress={handleImagePick} style={{ marginTop: 8 }}>
+                              <Text style={styles.uploadLink}>Upload Avatar</Text>
+                           </TouchableOpacity>
                         </View>
                      </View>
 
-                     <View style={styles.divider} />
-
-                     <View style={styles.row}>
-                        <View style={styles.iconBox}><Ionicons name="call-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Phone</Text>
-                           <Text style={styles.itemSub}>{doctorData.phone || 'Not provided'}</Text>
+                     {/* Web Form Grid Replacement */}
+                     <View style={styles.formGrid}>
+                        <View style={styles.formField}>
+                           <Text style={styles.label}>FULL NAME</Text>
+                           <TextInput
+                              style={styles.input}
+                              value={profile.full_name}
+                              onChangeText={(val) => handleChange('full_name', val)}
+                              placeholder="Your name"
+                           />
                         </View>
+
+                        <View style={styles.formField}>
+                           <Text style={styles.label}>EMAIL ADDRESS</Text>
+                           <TextInput
+                              style={[styles.input, styles.inputDisabled]}
+                              value={profile.email}
+                              editable={false}
+                              placeholder="Email"
+                           />
+                        </View>
+
+                        <View style={styles.formField}>
+                           <Text style={styles.label}>CREDENTIALS</Text>
+                           <TextInput
+                              style={styles.input}
+                              value={profile.credentials}
+                              onChangeText={(val) => handleChange('credentials', val)}
+                              placeholder="MD, MBBS"
+                           />
+                        </View>
+
+                        <View style={styles.formField}>
+                           <Text style={styles.label}>SPECIALTY</Text>
+                           <TextInput
+                              style={styles.input}
+                              value={profile.specialty}
+                              onChangeText={(val) => handleChange('specialty', val)}
+                              placeholder="Cardiology"
+                           />
+                        </View>
+
+                        <View style={styles.formField}>
+                           <Text style={styles.label}>LICENSE NUMBER</Text>
+                           <TextInput
+                              style={styles.input}
+                              value={profile.license_number}
+                              onChangeText={(val) => handleChange('license_number', val)}
+                              placeholder="LIC-123456"
+                           />
+                        </View>
+                     </View>
+
+                     {/* Action Buttons */}
+                     <View style={styles.buttonGroup}>
+                        <TouchableOpacity style={styles.cancelBtn} onPress={() => loadDoctorProfile()}>
+                           <Text style={styles.cancelBtnText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                           style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                           onPress={handleSave}
+                           disabled={saving}
+                        >
+                           {saving ? <ActivityIndicator size="small" color="white" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                        </TouchableOpacity>
                      </View>
                   </View>
 
-                  {/* PRIVACY & DATA Section */}
-                  <Text style={styles.sectionLabel}>PRIVACY & DATA</Text>
-                  <View style={styles.card}>
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('AuditLogScreen')}
-                     >
-                        <View style={styles.iconBox}><Ionicons name="list-outline" size={20} color="#555" /></View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={styles.itemTitle}>Audit Logs</Text>
-                           <Text style={styles.itemSub}>View your activity history</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
-
-                     <View style={styles.divider} />
-
-                     <TouchableOpacity
-                        style={styles.row}
-                        onPress={() => navigation.navigate('DeleteAccountScreen')}
-                     >
-                        <View style={[styles.iconBox, { backgroundColor: '#FFEBEE' }]}>
-                           <Ionicons name="trash-outline" size={20} color="#D32F2F" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                           <Text style={[styles.itemTitle, { color: '#D32F2F' }]}>Delete Account</Text>
-                           <Text style={styles.itemSub}>Permanently delete your account</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color="#CCC" />
-                     </TouchableOpacity>
-                  </View>
-
-                  <Text style={styles.footerNote}>Contact administrator to change email or phone</Text>
-
+                  {/* Maintaining Sign Out for Mobile Accessibility */}
                   <TouchableOpacity style={styles.signOutBtn} onPress={() => setShowSignOut(true)}>
                      <Ionicons name="log-out-outline" size={20} color="#D32F2F" style={{ marginRight: 8 }} />
                      <Text style={styles.signOutText}>Sign Out</Text>
                   </TouchableOpacity>
+
                </ScrollView>
             )}
          </View>
@@ -295,26 +300,144 @@ export default function DoctorSettingsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
    container: { flex: 1, backgroundColor: '#F9FAFC' },
-   content: { flex: 1, padding: 20 },
-   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
+   content: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
+   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+   headerTitle: { fontSize: 22, fontWeight: '700', color: '#1A1A1A' },
+   description: { fontSize: 13, color: '#64748B', marginBottom: 20 },
    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
    scrollContent: { paddingBottom: 40 },
-   profileHeader: { alignItems: 'center', marginBottom: 30 },
-   avatarContainer: { position: 'relative', marginBottom: 15 },
-   avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#E0E0E0' },
-   avatarPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-   editBadge: { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' },
-   nameText: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 4 },
-   roleText: { fontSize: 12, color: '#999', letterSpacing: 1, fontWeight: '600' },
-   sectionLabel: { fontSize: 12, fontWeight: 'bold', color: '#666', marginBottom: 10, marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' },
-   card: { backgroundColor: 'white', borderRadius: 12, paddingVertical: 5, paddingHorizontal: 15, marginBottom: 15, borderWidth: 1, borderColor: '#EEE' },
-   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15 },
-   iconBox: { width: 36, height: 36, backgroundColor: '#F5F7F9', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-   itemTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
-   itemSub: { fontSize: 12, color: '#999', marginTop: 2 },
-   divider: { height: 1, backgroundColor: '#F0F0F0', marginLeft: 50 },
-   footerNote: { textAlign: 'center', fontSize: 11, color: '#999', marginTop: 10, marginBottom: 20 },
-   signOutBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#FFEBEE', paddingVertical: 15, borderRadius: 12, marginBottom: 20 },
-   signOutText: { color: '#D32F2F', fontWeight: 'bold', fontSize: 14 }
+
+   // Profile Card (Matching Web UI exactly)
+   profileCard: {
+      backgroundColor: 'white',
+      borderRadius: 16,
+      padding: 24,
+      borderWidth: 1,
+      borderColor: '#F1F5F9',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.03,
+      shadowRadius: 8,
+      elevation: 2,
+      marginBottom: 20
+   },
+   profileCardContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 30
+   },
+   avatarCircle: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: '#E0E7FF', // Match web indigo slight bg
+      justifyContent: 'center',
+      alignItems: 'center',
+      overflow: 'hidden',
+      marginRight: 20
+   },
+   avatarInitials: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: '#3730A3' // Matches web text-indigo-800
+   },
+   profileInfoColumn: {
+      flex: 1,
+      justifyContent: 'center'
+   },
+   profileNameTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#111827'
+   },
+   profileCredentialsSub: {
+      fontSize: 13,
+      color: '#6B7280',
+      marginTop: 2
+   },
+   uploadLink: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#4F46E5', // match web text-indigo-600
+   },
+
+   // Form Fields
+   formGrid: {
+      gap: 16
+   },
+   formField: {
+      marginBottom: 16
+   },
+   label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#64748B', // match slate-500
+      marginBottom: 8,
+      letterSpacing: 0.5
+   },
+   input: {
+      borderWidth: 1,
+      borderColor: '#E2E8F0', // slate-200
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      fontSize: 14,
+      color: '#1E293B', // slate-800
+      backgroundColor: 'white'
+   },
+   inputDisabled: {
+      backgroundColor: '#F8FAFC', // slate-50
+      color: '#94A3B8' // slate-400
+   },
+
+   // Buttons
+   buttonGroup: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 24,
+      gap: 12
+   },
+   cancelBtn: {
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#E2E8F0',
+      backgroundColor: 'white',
+      justifyContent: 'center',
+      alignItems: 'center'
+   },
+   cancelBtnText: {
+      fontWeight: '600',
+      color: '#64748B',
+      fontSize: 14
+   },
+   saveBtn: {
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+      backgroundColor: '#4F46E5', // indigo-600
+      justifyContent: 'center',
+      alignItems: 'center'
+   },
+   saveBtnText: {
+      fontWeight: '600',
+      color: 'white',
+      fontSize: 14
+   },
+
+   // Sign Out
+   signOutBtn: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#FFEBEE',
+      paddingVertical: 15,
+      borderRadius: 12,
+      marginBottom: 20,
+      marginTop: 10
+   },
+   signOutText: { color: '#D32F2F', fontWeight: 'bold', fontSize: 14 },
 });

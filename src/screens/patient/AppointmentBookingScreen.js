@@ -80,7 +80,7 @@ export default function AppointmentBookingScreen({ route, navigation }) {
                 [
                     {
                         text: 'OK',
-                        onPress: () => navigation.navigate('PatientDashboard'),
+                        onPress: () => navigation.navigate('PatientHome'),
                     },
                 ]
             );
@@ -118,7 +118,13 @@ export default function AppointmentBookingScreen({ route, navigation }) {
                                 }
                             />
                             <View style={styles.doctorInfo}>
-                                <Text style={styles.doctorName}>Dr. {doctor.name}</Text>
+                                <Text style={styles.doctorName}>
+                                    {(() => {
+                                        let dName = doctor.name || doctor.full_name || 'Doctor';
+                                        if (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor') dName = 'Doctor';
+                                        return dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
+                                    })()}
+                                </Text>
                                 <Text style={styles.doctorSpecialty}>{doctor.specialty}</Text>
                             </View>
                         </View>

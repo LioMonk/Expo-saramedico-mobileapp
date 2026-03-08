@@ -17,10 +17,8 @@ import { teamAPI, hospitalAPI } from '../../services/api';
 export default function HospitalInviteTeamScreen({ navigation }) {
     const [loading, setLoading] = useState(false);
     const [email, setEmail] = useState('');
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
+    const [fullName, setFullName] = useState('');
     const [selectedRole, setSelectedRole] = useState('');
-    const [specialty, setSpecialty] = useState('');
     const [roles, setRoles] = useState([]);
     const [orgId, setOrgId] = useState(null);
 
@@ -49,7 +47,7 @@ export default function HospitalInviteTeamScreen({ navigation }) {
     };
 
     const handleInvite = async () => {
-        if (!email || !firstName || !lastName || !selectedRole) {
+        if (!email || !fullName || !selectedRole) {
             Alert.alert('Missing Fields', 'Please fill all required fields');
             return;
         }
@@ -68,10 +66,10 @@ export default function HospitalInviteTeamScreen({ navigation }) {
 
             const payload = {
                 email,
-                full_name: `${firstName} ${lastName}`.trim(),
+                full_name: fullName.trim(),
                 role: backendRole,
                 department_id: orgId || '00000000-0000-0000-0000-000000000000',
-                department_role: specialty || selectedRole || 'Physician',
+                department_role: selectedRole || 'Physician',
             };
 
             await teamAPI.inviteTeamMember(payload);
@@ -131,31 +129,16 @@ export default function HospitalInviteTeamScreen({ navigation }) {
                             />
                         </View>
 
-                        <View style={styles.row}>
-                            <View style={styles.halfInput}>
-                                <Text style={styles.label}>First Name *</Text>
-                                <View style={styles.inputContainer}>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="John"
-                                        placeholderTextColor="#999"
-                                        value={firstName}
-                                        onChangeText={setFirstName}
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.halfInput}>
-                                <Text style={styles.label}>Last Name *</Text>
-                                <View style={styles.inputContainer}>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Doe"
-                                        placeholderTextColor="#999"
-                                        value={lastName}
-                                        onChangeText={setLastName}
-                                    />
-                                </View>
+                        <View style={styles.formRow}>
+                            <Text style={styles.label}>Full Name *</Text>
+                            <View style={styles.inputContainer}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="John Doe"
+                                    placeholderTextColor="#999"
+                                    value={fullName}
+                                    onChangeText={setFullName}
+                                />
                             </View>
                         </View>
 
@@ -179,22 +162,6 @@ export default function HospitalInviteTeamScreen({ navigation }) {
                                 </TouchableOpacity>
                             ))}
                         </View>
-
-                        {selectedRole === 'Doctor' && (
-                            <>
-                                <Text style={styles.label}>Specialty</Text>
-                                <View style={styles.inputContainer}>
-                                    <Ionicons name="medical-outline" size={20} color="#999" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="e.g., Cardiology, Pediatrics"
-                                        placeholderTextColor="#999"
-                                        value={specialty}
-                                        onChangeText={setSpecialty}
-                                    />
-                                </View>
-                            </>
-                        )}
                     </View>
 
                     {/* Info Card */}

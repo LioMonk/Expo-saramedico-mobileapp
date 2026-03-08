@@ -7,7 +7,8 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Linking
+  Linking,
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +28,13 @@ const SPECIALTIES = [
   'Neurology', 'Psychiatry', 'General Practice', 'Internal Medicine'
 ];
 
+const REGISTERED_ORGANIZATIONS = [
+  'Apollo Hospital', 'Fortis Healthcare', 'Max Healthcare',
+  'AIIMS', 'Manipal Hospitals', 'Columbia Asia'
+];
+
 export default function SignUpScreen({ navigation }) {
+  const [organizationName, setOrganizationName] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -43,6 +50,9 @@ export default function SignUpScreen({ navigation }) {
   const [showSpecialtyPicker, setShowSpecialtyPicker] = useState(false);
   const [showCustomSpecialty, setShowCustomSpecialty] = useState(false);
   const [customSpecialty, setCustomSpecialty] = useState('');
+  const [showOrgPicker, setShowOrgPicker] = useState(false);
+  const [isOtherOrg, setIsOtherOrg] = useState(false);
+  const [customOrgName, setCustomOrgName] = useState('');
 
   // Error states
   const [errors, setErrors] = useState({});
@@ -74,14 +84,26 @@ export default function SignUpScreen({ navigation }) {
     const newErrors = {};
 
     // Validation
-    if (!fullName || !email || !password || !confirmPassword) {
-      if (!fullName) newErrors.fullName = 'Full name is required';
-      if (!email) newErrors.email = 'Email is required';
-      if (!password) newErrors.password = 'Password is required';
-      if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
-      setErrors(newErrors);
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
+    if (role === 'hospital') {
+      if (!organizationName || !fullName || !email || !password) {
+        if (!organizationName) newErrors.organizationName = 'Organization name is required';
+        if (!fullName) newErrors.fullName = 'Admin name is required';
+        if (!email) newErrors.email = 'Email is required';
+        if (!password) newErrors.password = 'Password is required';
+        setErrors(newErrors);
+        Alert.alert('Error', 'Please fill in all required fields');
+        return;
+      }
+    } else {
+      if (!fullName || !email || !password || !confirmPassword) {
+        if (!fullName) newErrors.fullName = 'Full name is required';
+        if (!email) newErrors.email = 'Email is required';
+        if (!password) newErrors.password = 'Password is required';
+        if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
+        setErrors(newErrors);
+        Alert.alert('Error', 'Please fill in all required fields');
+        return;
+      }
     }
 
     // Email validation
@@ -93,11 +115,13 @@ export default function SignUpScreen({ navigation }) {
       return;
     }
 
-    if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-      setErrors(newErrors);
-      Alert.alert('Error', 'Passwords do not match');
-      return;
+    if (role !== 'hospital') {
+      if (password !== confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
+        setErrors(newErrors);
+        Alert.alert('Error', 'Passwords do not match');
+        return;
+      }
     }
 
     if (password.length < 8) {
@@ -107,12 +131,7 @@ export default function SignUpScreen({ navigation }) {
       return;
     }
 
-    if (role === 'doctor' && !licenseNumber) {
-      newErrors.licenseNumber = 'License number is required for doctors';
-      setErrors(newErrors);
-      Alert.alert('Error', 'License number is required for doctors');
-      return;
-    }
+    // Removed explicit licenseNumber backend validation since it's no longer part of signup schema
 
     if (!isChecked) {
       Alert.alert('Error', 'Please agree to the Terms & Service and Privacy Policy');
@@ -127,45 +146,33 @@ export default function SignUpScreen({ navigation }) {
         fullName,
         role,
         phoneE164,
-        specialty: role === 'doctor' ? specialty || null : null,
-        licenseNumber: role === 'doctor' ? licenseNumber : null
+        organizationName
       });
 
-      const response = await authAPI.register(
-        email,
-        password,
-        fullName,
-        role,
-        phoneE164 || null, // Use E.164 format
-        role === 'doctor' ? specialty || null : null,
-        role === 'doctor' ? licenseNumber : null
-      );
+      let response;
+      if (role === 'hospital') {
+        response = await authAPI.registerHospital(
+          organizationName,
+          fullName, // using fullName state for adminName
+          email,
+          phoneE164 || phone || null,
+          password
+        );
+      } else {
+        response = await authAPI.register(
+          email,
+          password,
+          fullName,
+          role,
+          phoneE164 || null,
+          organizationName || null
+        );
+      }
 
       const { access_token, refresh_token, user } = response.data;
       await storeTokens(access_token, refresh_token, user);
 
-      // Store doctor-specific data locally for immediate access
-      if (role === 'doctor') {
-        const doctorProfile = {
-          specialty: specialty || customSpecialty || 'General Practice',
-          license_number: licenseNumber,
-          phone: phoneE164 || null,
-          full_name: fullName,
-          email: email
-        };
-        await AsyncStorage.setItem('doctor_profile', JSON.stringify(doctorProfile));
-
-        // Sync specialty and license to backend via PATCH /doctor/profile
-        try {
-          const { default: api } = await import('../../services/api');
-          await api.patch('/doctor/profile', {
-            specialty: specialty || customSpecialty || 'General Practice',
-            license_number: licenseNumber
-          });
-        } catch (syncError) {
-          console.log('Profile sync will happen on next login:', syncError.message);
-        }
-      }
+      // Stored token successfully!
 
       Alert.alert(
         'Success',
@@ -290,10 +297,11 @@ export default function SignUpScreen({ navigation }) {
 
         {/* Logo Section - Matching Login */}
         <View style={styles.headerCenter}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="medkit" size={40} color={COLORS.primary} />
-            <Text style={styles.headerTitle}>Saramedico</Text>
-          </View>
+          <Image
+            source={require('../../../assets/icon_new.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Tabs: Login / Sign Up */}
@@ -337,8 +345,74 @@ export default function SignUpScreen({ navigation }) {
         </View>
         <Text style={styles.helperText}>Role defines access to clinical features.</Text>
 
-        {/* Full Name */}
-        <Text style={styles.label}>Full Name *</Text>
+        {(role === 'hospital' || role === 'doctor') && (
+          <View style={{ zIndex: 1000 }}>
+            <Text style={styles.label}>
+              {role === 'hospital' ? 'Organization Name *' : 'Organization Name (Optional)'}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.pickerButton, errors.organizationName && { borderColor: COLORS.error }]}
+              onPress={() => setShowOrgPicker(!showOrgPicker)}
+            >
+              <Ionicons name="business-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
+              <Text style={[styles.pickerButtonText, !organizationName && { color: '#999' }]}>
+                {organizationName || 'Select Organization'}
+              </Text>
+              <Ionicons name={showOrgPicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+            </TouchableOpacity>
+
+            {showOrgPicker && (
+              <View style={styles.pickerDropdown}>
+                <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 200 }}>
+                  {REGISTERED_ORGANIZATIONS.map((org) => (
+                    <TouchableOpacity
+                      key={org}
+                      style={styles.pickerItem}
+                      onPress={() => {
+                        setOrganizationName(org);
+                        setIsOtherOrg(false);
+                        setShowOrgPicker(false);
+                      }}
+                    >
+                      <Text style={styles.pickerItemText}>{org}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.pickerItem, { borderBottomWidth: 0, backgroundColor: '#f9f9f9' }]}
+                    onPress={() => {
+                      setOrganizationName('');
+                      setIsOtherOrg(true);
+                      setShowOrgPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerItemText, { fontWeight: '600', color: COLORS.primary }]}>
+                      + Other / Custom
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            )}
+
+            {isOtherOrg && (
+              <View style={{ marginTop: 10 }}>
+                <CustomInput
+                  placeholder="Enter Organization Name"
+                  icon="business-outline"
+                  value={organizationName}
+                  onChangeText={(text) => setOrganizationName(text)}
+                  error={errors.organizationName}
+                  accessibilityLabel="Custom organization name input"
+                />
+              </View>
+            )}
+
+            {errors.organizationName && <Text style={styles.errorText}>{errors.organizationName}</Text>}
+          </View>
+        )}
+
+        {/* Full Name / Admin Name */}
+        <Text style={styles.label}>{role === 'hospital' ? 'Admin Name *' : 'Full Name *'}</Text>
         <CustomInput
           placeholder="John Doe"
           icon="person-outline"
@@ -347,7 +421,7 @@ export default function SignUpScreen({ navigation }) {
           error={errors.fullName}
           autoComplete="name"
           textContentType="name"
-          accessibilityLabel="Full name input"
+          accessibilityLabel={role === 'hospital' ? "Admin name input" : "Full name input"}
         />
 
         {/* Work Email */}
@@ -373,86 +447,7 @@ export default function SignUpScreen({ navigation }) {
           error={errors.phone}
         />
 
-        {/* Doctor-Specific Fields */}
-        {role === 'doctor' && (
-          <>
-            <Text style={styles.label}>Medical License Number *</Text>
-            <CustomInput
-              placeholder="e.g., MD12345678"
-              icon="card-outline"
-              value={licenseNumber}
-              onChangeText={setLicenseNumber}
-              error={errors.licenseNumber}
-              accessibilityLabel="Medical license number input"
-            />
-
-            {/* Specialty Dropdown */}
-            <View style={styles.dropdownWrapper}>
-              <Text style={styles.label}>Specialty (Optional)</Text>
-              <TouchableOpacity
-                style={styles.dropdownTrigger}
-                onPress={() => setShowSpecialtyPicker(!showSpecialtyPicker)}
-              >
-                <Text style={styles.dropdownText}>
-                  {showCustomSpecialty ? customSpecialty : (specialty || 'Select specialty')}
-                </Text>
-                <Ionicons name={showSpecialtyPicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
-              </TouchableOpacity>
-              {showSpecialtyPicker && (
-                <View style={styles.dropdownList}>
-                  <ScrollView
-                    nestedScrollEnabled={true}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={true}
-                  >
-                    {SPECIALTIES.map((spec) => (
-                      <TouchableOpacity
-                        key={spec}
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          setSpecialty(spec);
-                          setShowSpecialtyPicker(false);
-                          setShowCustomSpecialty(false);
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>{spec}</Text>
-                      </TouchableOpacity>
-                    ))}
-                    {/* Custom Specialty Option */}
-                    <TouchableOpacity
-                      style={[styles.dropdownItem, styles.customOption]}
-                      onPress={() => {
-                        setShowSpecialtyPicker(false);
-                        setShowCustomSpecialty(true);
-                        setSpecialty('');
-                      }}
-                    >
-                      <Text style={[styles.dropdownItemText, styles.customOptionText]}>
-                        I don't see my specialty
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
-              )}
-            </View>
-
-            {/* Custom Specialty Input */}
-            {showCustomSpecialty && (
-              <>
-                <Text style={styles.label}>Enter Your Specialty</Text>
-                <CustomInput
-                  placeholder="e.g., Oncology, Endocrinology"
-                  icon="medical-outline"
-                  value={customSpecialty}
-                  onChangeText={(text) => {
-                    setCustomSpecialty(text);
-                    setSpecialty(text);
-                  }}
-                />
-              </>
-            )}
-          </>
-        )}
+        {/* Doctor-Specific Fields (Removed per API Schema sync rules) */}
 
         {/* Password */}
         <Text style={styles.label}>Password *</Text>
@@ -501,30 +496,34 @@ export default function SignUpScreen({ navigation }) {
         <PasswordStrengthIndicator password={password} />
 
         {/* Confirm Password */}
-        <Text style={styles.label}>Confirm Password *</Text>
-        <CustomInput
-          placeholder="••••••••••••"
-          isPassword
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          error={errors.confirmPassword}
-          autoComplete="password-new"
-          textContentType="newPassword"
-          accessibilityLabel="Confirm password input"
-        />
-
-        {/* Password Match Indicator */}
-        {confirmPassword && (
-          <View style={styles.matchIndicator}>
-            <Ionicons
-              name={password === confirmPassword ? "checkmark-circle" : "close-circle"}
-              size={16}
-              color={password === confirmPassword ? "#34C759" : "#FF3B30"}
+        {role !== 'hospital' && (
+          <>
+            <Text style={styles.label}>Confirm Password *</Text>
+            <CustomInput
+              placeholder="••••••••••••"
+              isPassword
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              error={errors.confirmPassword}
+              autoComplete="password-new"
+              textContentType="newPassword"
+              accessibilityLabel="Confirm password input"
             />
-            <Text style={[styles.matchText, { color: password === confirmPassword ? "#34C759" : "#FF3B30" }]}>
-              {password === confirmPassword ? "Passwords match" : "Passwords do not match"}
-            </Text>
-          </View>
+
+            {/* Password Match Indicator */}
+            {confirmPassword && (
+              <View style={styles.matchIndicator}>
+                <Ionicons
+                  name={password === confirmPassword ? "checkmark-circle" : "close-circle"}
+                  size={16}
+                  color={password === confirmPassword ? "#34C759" : "#FF3B30"}
+                />
+                <Text style={[styles.matchText, { color: password === confirmPassword ? "#34C759" : "#FF3B30" }]}>
+                  {password === confirmPassword ? "Passwords match" : "Passwords do not match"}
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         {/* HIPAA Compliance Note */}
@@ -576,7 +575,7 @@ const styles = StyleSheet.create({
   content: { padding: 25, paddingBottom: 40 },
 
   headerCenter: { alignItems: 'center', marginBottom: 30, marginTop: 20 },
-  headerTitle: { fontSize: 26, fontWeight: 'bold', color: '#00A3FF', marginLeft: 10 },
+  logo: { width: '100%', height: 60 },
 
   tabContainer: { flexDirection: 'row', backgroundColor: '#F0F2F5', borderRadius: 30, padding: 4, marginBottom: 20 },
   activeTab: {
@@ -673,6 +672,58 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 16, color: '#333' },
   customOption: { borderBottomWidth: 0, borderTopWidth: 2, borderTopColor: '#E0E0E0' },
   customOptionText: { color: COLORS.primary, fontWeight: '600' },
+
+  // Picker Styles
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    paddingHorizontal: 15,
+    height: 55,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  pickerDropdown: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    marginTop: -5,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  pickerItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  pickerItemText: {
+    fontSize: 15,
+    color: '#333',
+  },
+  errorText: {
+    color: COLORS.error || '#FF3B30',
+    fontSize: 12,
+    marginTop: -5,
+    marginBottom: 10,
+    marginLeft: 5,
+  },
 
   checkboxContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 15 },
   checkbox: { width: 22, height: 22, borderWidth: 2, borderColor: '#ccc', borderRadius: 5, marginRight: 10, justifyContent: 'center', alignItems: 'center' },

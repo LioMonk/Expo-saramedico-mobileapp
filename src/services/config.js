@@ -24,10 +24,13 @@ const getEnvVar = (key, defaultValue = '') => {
  */
 const getBaseUrl = () => {
     // Read environment configuration
-    const apiEnvironment = getEnvVar('API_ENVIRONMENT', 'aws').toLowerCase();
+    const apiEnvironment = (getEnvVar('API_ENVIRONMENT') || 'local').toLowerCase();
     const awsApiUrl = getEnvVar('AWS_API_URL', 'http://107.20.98.130:8000');
-    const localApiHost = getEnvVar('LOCAL_API_HOST', '10.0.2.2');
+    let localApiHost = getEnvVar('LOCAL_API_HOST', 'localhost');
     const localApiPort = getEnvVar('LOCAL_API_PORT', '8000');
+
+    // Debug logging to see where values are coming from
+    console.log(`🔍 [API Config] API_ENVIRONMENT: "${apiEnvironment}"`);
 
     let baseUrl;
 
@@ -36,33 +39,29 @@ const getBaseUrl = () => {
         baseUrl = `${awsApiUrl}/api/v1`;
         console.log('🌐 [API Config] Using AWS Deployed API');
     } else {
-        // Use local development API with platform-specific handling
-        console.log('💻 [API Config] Using Local Development API');
-
-        if (Platform.OS === 'android') {
-            // Android emulator uses 10.0.2.2 to access host machine's localhost
-            baseUrl = `http://10.0.2.2:${localApiPort}/api/v1`;
-            console.log('📱 [API Config] Platform: Android Emulator');
-        } else if (Platform.OS === 'ios') {
-            // iOS simulator can use localhost
-            baseUrl = `http://${localApiHost}:${localApiPort}/api/v1`;
-            console.log('📱 [API Config] Platform: iOS Simulator');
-        } else {
-            // For physical devices, use the local host IP (should be your machine's WiFi IP)
-            baseUrl = `http://${localApiHost}:${localApiPort}/api/v1`;
-            console.log('📱 [API Config] Platform: Physical Device/Web');
-        }
+        // Use local development API
+        // NOTE: We now use 'adb reverse' for Android, so 'localhost' works perfectly.
+        // This is REQUIRED for MinIO presigned URLs to have matching signatures.
+        console.log('💻 [API Config] Using Local Development API (Localhost Bridge)');
+        baseUrl = `http://${localApiHost}:${localApiPort}/api/v1`;
     }
 
     console.log(`✅ [API Config] Base URL: ${baseUrl}`);
-    console.log(`ℹ️  [API Config] To switch APIs, change API_ENVIRONMENT in .env file`);
-
     return baseUrl;
 };
 
 // API Configuration
 export const API_CONFIG = {
     BASE_URL: getBaseUrl(),
+    // Determine if we are in local development mode
+    // We treat localhost, 127.0.0.1 and 10.0.2.2 (Android's localhost alias) as LOCAL.
+    PUBLIC_HOST: (
+        getBaseUrl().includes('localhost') ||
+        getBaseUrl().includes('127.0.0.1') ||
+        getBaseUrl().includes('10.0.2.2')
+    ) ? 'localhost' : '107.20.98.130',
+    API_PORT: (getEnvVar('LOCAL_API_PORT') || '8000'),
+    MINIO_PORT: '9010',
     TIMEOUT: 30000, // 30 seconds
     HEADERS: {
         'Content-Type': 'application/json',

@@ -31,6 +31,7 @@ export default function HospitalStaffScreen({ navigation }) {
     const [search, setSearch] = useState('');
     const [staff, setStaff] = useState([]);
     const [orgId, setOrgId] = useState(null);
+    const [filterTab, setFilterTab] = useState('All');
 
     // Invite modal state
     const [showInvite, setShowInvite] = useState(false);
@@ -45,22 +46,56 @@ export default function HospitalStaffScreen({ navigation }) {
     const loadStaff = async () => {
         try {
             setLoading(true);
-            const [staffRes, orgRes] = await Promise.all([
+            try {
+                const res = await hospitalAPI.getStaffData();
+                const data = res.data || {};
+
+                if (data.staff) {
+                    setStaff(data.staff.map(s => ({
+                        id: s.id,
+                        name: s.name || 'Unknown',
+                        role: s.role || 'Staff',
+                        specialty: s.specialty || '',
+                        email: s.email || '',
+                        phone: s.phone || '',
+                        status: s.status || 'Active',
+                    })));
+                    const orgRes = await hospitalAPI.getOrganization();
+                    if (orgRes.data?.id) setOrgId(orgRes.data.id);
+                    return; // skip fallback
+                }
+            } catch (err) {
+                console.log('Staff endpoint error, falling back:', err.message);
+            }
+
+            const [staffRes, orgRes, statusRes] = await Promise.allSettled([
                 hospitalAPI.getStaff(),
                 hospitalAPI.getOrganization(),
+                hospitalAPI.getDoctorsStatus()
             ]);
-            const staffList = staffRes.data || [];
-            setStaff(staffList.map(s => ({
-                id: s.id,
-                name: s.name || s.full_name || 'Unknown',
-                role: s.role || 'Staff',
-                specialty: s.specialty || '',
-                email: s.email || '',
-                phone: s.phone || '',
-                status: s.status || 'Active',
-                lastAccessed: s.last_accessed || s.created_at || '',
-            })));
-            if (orgRes.data?.id) setOrgId(orgRes.data.id);
+
+            const staffList = staffRes.status === 'fulfilled' ? (staffRes.value.data || []) : [];
+            const statusData = statusRes.status === 'fulfilled' ? [
+                ...(statusRes.value.data?.active_doctors || []),
+                ...(statusRes.value.data?.inactive_doctors || [])
+            ] : [];
+
+            setStaff(staffList.map(s => {
+                const isDoctor = ['doctor', 'physician'].includes((s.role || '').toLowerCase());
+                const statusInfo = isDoctor ? statusData.find(st => st.id === s.id) : null;
+
+                return {
+                    id: s.id,
+                    name: s.name || s.full_name || 'Unknown',
+                    role: s.role || 'Staff',
+                    specialty: s.specialty || '',
+                    email: s.email || '',
+                    phone: s.phone || '',
+                    status: statusInfo ? (statusInfo.status === 'active' ? 'Active' : 'Inactive') : (s.status || 'Active'),
+                    lastAccessed: s.last_accessed || s.created_at || '',
+                };
+            }));
+            if (orgRes.status === 'fulfilled' && orgRes.value.data?.id) setOrgId(orgRes.value.data.id);
         } catch (err) {
             console.error('Staff load error:', err);
         } finally {
@@ -107,10 +142,14 @@ export default function HospitalStaffScreen({ navigation }) {
 
     const filtered = staff.filter(s => {
         const q = search.toLowerCase();
-        return (s.name || '').toLowerCase().includes(q) ||
+        const textMatch = (s.name || '').toLowerCase().includes(q) ||
             (s.role || '').toLowerCase().includes(q) ||
             (s.email || '').toLowerCase().includes(q) ||
             (s.specialty || '').toLowerCase().includes(q);
+
+        if (filterTab === 'Active') return textMatch && s.status === 'Active';
+        if (filterTab === 'Inactive') return textMatch && s.status !== 'Active';
+        return textMatch;
     });
 
     const getRoleColor = (role) => {
@@ -176,7 +215,7 @@ export default function HospitalStaffScreen({ navigation }) {
                 <Ionicons name="search-outline" size={18} color={PALETTE.sub} />
                 <TextInput
                     style={styles.searchInput}
-                    placeholder="Search staff…"
+                    placeholder="Search staff, reports, notes..."
                     placeholderTextColor="#94A3B8"
                     value={search}
                     onChangeText={setSearch}
@@ -186,6 +225,21 @@ export default function HospitalStaffScreen({ navigation }) {
                         <Ionicons name="close-circle" size={18} color={PALETTE.sub} />
                     </TouchableOpacity>
                 )}
+            </View>
+
+            {/* Filter Tabs */}
+            <View style={styles.filterTabsContainer}>
+                {['All', 'Active', 'Inactive'].map(tab => (
+                    <TouchableOpacity
+                        key={tab}
+                        style={[styles.filterTab, filterTab === tab && styles.filterTabActive]}
+                        onPress={() => setFilterTab(tab)}
+                    >
+                        <Text style={[styles.filterTabText, filterTab === tab && styles.filterTabTextActive]}>
+                            {tab}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
             </View>
 
             <ScrollView
@@ -221,6 +275,14 @@ export default function HospitalStaffScreen({ navigation }) {
                                         {member.status || 'Active'}
                                     </Text>
                                 </View>
+                                {['doctor', 'physician'].includes((member.role || '').toLowerCase()) && (
+                                    <TouchableOpacity
+                                        style={styles.manageBtn}
+                                        onPress={() => navigation.navigate('HospitalEditDoctorScreen', { doctor: member })}
+                                    >
+                                        <Text style={styles.manageBtnText}>Manage</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     );
@@ -308,6 +370,14 @@ const styles = StyleSheet.create({
     roleText: { fontSize: 10, fontWeight: '800' },
     statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
     statusText: { fontSize: 10, fontWeight: '800' },
+    manageBtn: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: PALETTE.border, backgroundColor: PALETTE.bg },
+    manageBtnText: { fontSize: 11, fontWeight: '700', color: PALETTE.text },
+
+    filterTabsContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 12, gap: 8 },
+    filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: PALETTE.border, backgroundColor: '#FFF' },
+    filterTabActive: { backgroundColor: PALETTE.blue, borderColor: PALETTE.blue },
+    filterTabText: { fontSize: 12, fontWeight: '700', color: PALETTE.sub },
+    filterTabTextActive: { color: '#FFF' },
 
     emptyContainer: { alignItems: 'center', paddingTop: 60, gap: 12 },
     emptyText: { fontSize: 15, color: PALETTE.sub, fontWeight: '600' },

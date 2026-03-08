@@ -28,6 +28,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { TOKEN_CONFIG, API_CONFIG } from './config';
+import { fixUserUrls } from './urlFixer';
 
 // ─────────────────────────────────────────────────────────────
 // Internal raw axios client (no interceptors) used for token ops
@@ -199,7 +200,8 @@ const AuthService = {
         }
 
         const data = await response.json();
-        const { access_token, refresh_token, user } = data;
+        const { access_token, refresh_token, user: rawUser } = data;
+        const user = fixUserUrls(rawUser);
 
         if (!access_token || !user) {
             throw new Error('Invalid login response from server');
@@ -320,7 +322,8 @@ const AuthService = {
                 throw new Error(`Auth check failed: ${response.status}`);
             }
 
-            const user = await response.json();
+            const rawUser = await response.json();
+            const user = fixUserUrls(rawUser);
             // Persist refreshed user data
             await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(user));
 

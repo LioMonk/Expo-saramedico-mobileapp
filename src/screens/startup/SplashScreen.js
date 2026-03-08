@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, Image } from 'react-native';
 import { COLORS } from '../../constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AuthService from '../../services/authService';
@@ -30,7 +30,11 @@ export default function SplashScreen({ navigation }) {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.content}>
-                <Text style={styles.title}>SaraMedico</Text>
+                <Image
+                    source={require('../../../assets/splash_fixed.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                />
             </View>
         </SafeAreaView>
     );
@@ -39,18 +43,18 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#E3F2FD',
+        backgroundColor: '#FFFFFF',
         justifyContent: 'center',
         alignItems: 'center',
     },
     content: {
+        width: '100%',
+        height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    title: {
-        fontSize: 48,
-        fontWeight: 'bold',
-        color: COLORS.primary,
-        letterSpacing: 1,
+    logo: {
+        width: '90%',
+        height: '20%',
     }
 });

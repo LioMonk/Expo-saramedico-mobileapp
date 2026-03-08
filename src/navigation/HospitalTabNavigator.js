@@ -14,13 +14,13 @@ const Tab = createBottomTabNavigator();
 export default function HospitalTabNavigator() {
     return (
         <Tab.Navigator
-            initialRouteName="Dashboard"
+            initialRouteName="HospitalDashboard"
             screenOptions={({ route }) => ({
                 headerShown: false,
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
 
-                    if (route.name === 'Dashboard') {
+                    if (route.name === 'HospitalDashboard') {
                         iconName = focused ? 'home' : 'home-outline';
                     } else if (route.name === 'Team') {
                         iconName = focused ? 'people' : 'people-outline';
@@ -44,7 +44,11 @@ export default function HospitalTabNavigator() {
                 },
             })}
         >
-            <Tab.Screen name="Dashboard" component={HospitalDashboard} />
+            <Tab.Screen
+                name="HospitalDashboard"
+                component={HospitalDashboard}
+                options={{ tabBarLabel: 'Home' }}
+            />
             <Tab.Screen name="Team" component={HospitalTeamScreen} />
             <Tab.Screen name="Schedule" component={HospitalScheduleScreen} />
             <Tab.Screen name="Settings" component={HospitalSettingsScreen} />

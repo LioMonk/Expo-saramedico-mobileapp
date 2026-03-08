@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import { COLORS } from '../../constants/theme';
-import BottomNavBar from '../../components/BottomNavBar';
 import { patientAPI, calendarAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 
@@ -57,15 +56,59 @@ export default function ScheduleScreen({ navigation }) {
       const startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       const endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
 
-      const [appointmentsRes, eventsRes] = await Promise.all([
+      const [appointmentsRes, eventsRes, consultationsRes, doctorsRes] = await Promise.all([
         patientAPI.getMyAppointments(),
         calendarAPI.getEvents({
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString()
-        }).catch(() => ({ data: [] }))
+        }).catch(() => ({ data: [] })),
+        patientAPI.getMyConsultations(50).catch(() => ({ data: [] })),
+        patientAPI.getDoctors().catch(() => ({ data: [] }))
       ]);
 
-      setAppointments(appointmentsRes.data || []);
+      // Create map of doctor id -> name (matching website logic)
+      const dMap = {};
+      const doctorsData = doctorsRes.data?.results || doctorsRes.data || [];
+      if (Array.isArray(doctorsData)) {
+        doctorsData.forEach(d => {
+          dMap[d.id] = d.full_name || (d.name ? (d.name.startsWith("Dr.") ? d.name : `Dr. ${d.name}`) : "Doctor");
+        });
+      }
+
+      const rawAppts = appointmentsRes.data || [];
+      const rawConsults = consultationsRes.data?.consultations || consultationsRes.data || [];
+
+      // Merge and enrich (matches website appointments/page.jsx)
+      const enrichedAppts = Array.isArray(rawAppts) ? rawAppts.map(a => {
+        let name = a.doctor_name || dMap[a.doctor_id] || "Doctor";
+        if (name !== 'Doctor' && !name.startsWith('Dr.')) name = `Dr. ${name}`;
+
+        return {
+          ...a,
+          itemType: 'appointment',
+          is_consultation: false,
+          doctor_name: name
+        };
+      }) : [];
+
+      const enrichedConsults = Array.isArray(rawConsults) ? rawConsults.map(c => {
+        let name = c.doctorName && c.doctorName !== "Unknown Doctor" ? c.doctorName : (dMap[c.doctorId] || "Doctor");
+        if (name !== 'Doctor' && !name.startsWith('Dr.')) name = `Dr. ${name}`;
+
+        return {
+          ...c,
+          id: c.id,
+          itemType: 'appointment', // treat as appointment for list view
+          is_consultation: true,
+          doctor_name: name,
+          requested_date: c.scheduledAt,
+          status: c.status,
+          meet_link: c.meetLink,
+          reason: c.notes || "Instant meeting created by doctor"
+        };
+      }) : [];
+
+      setAppointments([...enrichedAppts, ...enrichedConsults]);
       setCalendarEvents(eventsRes.data?.events || eventsRes.data || []);
     } catch (error) {
       console.error('Failed to load schedule:', error);
@@ -128,8 +171,8 @@ export default function ScheduleScreen({ navigation }) {
       });
     });
 
-    // Sort: earliest first
-    items.sort((a, b) => a.sortDate - b.sortDate);
+    // Sort: latest first (matches website parity)
+    items.sort((a, b) => b.sortDate - a.sortDate);
     setFilteredItems(items);
   }, [appointments, calendarEvents, selectedDate, activeTab]);
 
@@ -188,11 +231,16 @@ export default function ScheduleScreen({ navigation }) {
   const getStatusStyle = (status) => {
     switch (status?.toLowerCase()) {
       case 'accepted':
-        return { backgroundColor: '#E3F2FD', color: '#2196F3' };
-      case 'pending':
-        return { backgroundColor: '#FFF3E0', color: '#FF9800' };
+      case 'scheduled':
+      case 'active':
+        return { backgroundColor: '#dcfce7', color: '#166534' }; // Website: #166534 on #dcfce7
+      case 'completed':
+        return { backgroundColor: '#e0f2fe', color: '#0369a1' }; // Website: #0369a1 on #e0f2fe
       case 'declined':
-        return { backgroundColor: '#FFEBEE', color: '#F44336' };
+      case 'cancelled':
+        return { backgroundColor: '#fee2e2', color: '#991b1b' }; // Website: #991b1b on #fee2e2
+      case 'pending':
+        return { backgroundColor: '#fef9c3', color: '#854d0e' }; // Website: #854d0e on #fef9c3
       default:
         return { backgroundColor: '#F5F5F5', color: '#666' };
     }
@@ -241,13 +289,19 @@ export default function ScheduleScreen({ navigation }) {
                 <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayTime}</Text>
               </View>
             </View>
-            <View style={[styles.typeBadge, { backgroundColor: accentColor + '15' }]}>
-              <Text style={[styles.typeBadgeText, { color: accentColor }]}>{tagLabel}</Text>
+            <View style={[styles.typeBadge, {
+              backgroundColor: isEvent ? '#9C27B015' : (item.is_consultation ? '#EFF6FF' : '#F8FAFC'),
+              borderColor: isEvent ? '#9C27B030' : (item.is_consultation ? '#DBEAFE' : '#E2E8F0'),
+              borderWidth: 1
+            }]}>
+              <Text style={[styles.typeBadgeText, { color: isEvent ? '#9C27B0' : (item.is_consultation ? '#3B82F6' : '#64748B') }]}>
+                {isEvent ? 'PERSONAL EVENT' : (item.is_consultation ? 'INSTANT MEETING' : 'APPOINTMENT')}
+              </Text>
             </View>
           </View>
 
           <Text style={styles.sexyTitle}>
-            {isEvent ? item.title : `Dr. ${item.doctor_name || 'Doctor'}`}
+            {isEvent ? item.title : (item.doctor_name || 'Doctor')}
           </Text>
 
           <Text style={styles.sexyDesc} numberOfLines={2}>
@@ -275,13 +329,17 @@ export default function ScheduleScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             ) : (
-              item.status === 'accepted' && item.join_url ? (
+              (item.status === 'accepted' || item.status === 'scheduled' || item.status === 'active') && (item.join_url || item.meet_link || item.meetLink) ? (
                 <TouchableOpacity
-                  style={styles.joinButton}
-                  onPress={() => navigation.navigate('VideoCallScreen', { appointment: item, role: 'patient' })}
+                  style={[styles.joinButton, { backgroundColor: '#82c0ff' }]}
+                  onPress={() => navigation.navigate('VideoCallScreen', {
+                    appointment: { ...item, sortDate: item.sortDate ? item.sortDate.toISOString() : null },
+                    consultationId: item.is_consultation ? item.id : null,
+                    role: 'patient'
+                  })}
                 >
                   <Ionicons name="videocam" size={18} color="white" />
-                  <Text style={styles.joinButtonText}>Join Call</Text>
+                  <Text style={styles.joinButtonText}>Join Meeting</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={[styles.statusTag, { backgroundColor: getStatusStyle(item.status).backgroundColor }]}>
@@ -337,7 +395,10 @@ export default function ScheduleScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Schedule</Text>
+          <View style={{ flex: 1, paddingHorizontal: 12 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>Appointments</Text>
+            <Text style={{ fontSize: 11, color: '#666' }}>Securely manage and view your visits.</Text>
+          </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
@@ -346,7 +407,7 @@ export default function ScheduleScreen({ navigation }) {
               <Ionicons name={viewMode === 'list' ? "calendar" : "list"} size={22} color={COLORS.primary} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => navigation.navigate('DoctorSearch')}
+              onPress={() => navigation.navigate('Doctors')}
               style={styles.bookHeaderBtn}
             >
               <Ionicons name="calendar-outline" size={16} color="white" />
@@ -433,7 +494,7 @@ export default function ScheduleScreen({ navigation }) {
                 <View style={styles.emptyActions}>
                   <TouchableOpacity
                     style={styles.bookButton}
-                    onPress={() => navigation.navigate('DoctorSearch')}
+                    onPress={() => navigation.navigate('Doctors')}
                   >
                     <Text style={styles.bookButtonText}>Find Doctor</Text>
                   </TouchableOpacity>
@@ -444,18 +505,20 @@ export default function ScheduleScreen({ navigation }) {
         </ScrollView>
       </View>
 
-      {/* FAB for Personal Events */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => {
-          setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
-          setShowEventModal(true);
-        }}
-      >
-        <Ionicons name="add" size={32} color="white" />
-      </TouchableOpacity>
+      {/* FAB for Personal Events - Only in 'All' or 'Events' tab */}
+      {(activeTab === 'all' || activeTab === 'events') && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => {
+            setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
+            setShowEventModal(true);
+          }}
+        >
+          <Ionicons name="add" size={32} color="white" />
+        </TouchableOpacity>
+      )}
 
-      <BottomNavBar navigation={navigation} activeRoute="Schedule" />
+      <View style={{ height: 20 }} />
 
       {/* Event Creation Modal */}
       <Modal visible={showEventModal} animationType="slide" transparent={true} onRequestClose={() => setShowEventModal(false)}>
@@ -563,10 +626,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: 'white',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
   },
   headerTitle: {
     fontSize: 20,
@@ -589,10 +650,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     gap: 6,
-    elevation: 2,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
   },
   bookHeaderText: {
     color: 'white',
@@ -776,7 +833,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 20,
     backgroundColor: '#9C27B0',
     width: 60,
     height: 60,

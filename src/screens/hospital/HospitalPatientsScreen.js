@@ -28,6 +28,36 @@ export default function HospitalPatientsScreen({ navigation }) {
     const loadData = async () => {
         try {
             setLoading(true);
+            try {
+                const res = await hospitalAPI.getPatientsData();
+                const data = res.data || {};
+
+                if (data.metrics) {
+                    setMetrics({
+                        active: data.metrics.activePatients || 0,
+                        today: data.metrics.patientsToday || 0,
+                        pending: data.metrics.pendingPatients || 0,
+                    });
+                }
+
+                if (data.patients) {
+                    setPatients(data.patients.map(p => ({
+                        id: p.id,
+                        name: p.name || 'Unknown',
+                        mrn: p.mrn || 'N/A',
+                        gender: p.gender || 'N/A',
+                        email: p.email || '',
+                        lastVisit: p.lastVisit || null,
+                        status: p.lastVisit ? 'active' : 'new',
+                    })));
+                    return; // Skip fallback
+                }
+            } catch (err) {
+                // Fallback to manual assembly if endpoint doesn't work
+                console.log('Patients endpoint error, falling back to manual merge:', err.message);
+            }
+
+            // Fallback Manual Load
             const [membersRes, consRes] = await Promise.all([
                 hospitalAPI.getOrgMembers(),
                 hospitalAPI.getConsultations({ limit: 100 }),
@@ -113,18 +143,21 @@ export default function HospitalPatientsScreen({ navigation }) {
                 <Text style={styles.headerTitle}>Patients</Text>
                 <View style={{ width: 38 }} />
             </View>
+            <View style={styles.headerSubtitleContainer}>
+                <Text style={styles.headerSubtitleText}>Comprehensive registry of all clinical patients across hospital wings.</Text>
+            </View>
 
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scroll}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PALETTE.green]} />}
             >
-                {/* Metric Cards — matches Hospitalflow.pdf §5 */}
+                {/* Metric Cards */}
                 <View style={styles.metricsRow}>
                     {[
                         { label: 'Active Patients', value: metrics.active, color: PALETTE.green, bg: PALETTE.greenLight, icon: 'heart' },
-                        { label: 'Seen Today', value: metrics.today, color: PALETTE.blue, bg: PALETTE.bluLight, icon: 'today' },
-                        { label: 'New Patients', value: metrics.pending, color: PALETTE.amber, bg: PALETTE.amberLight, icon: 'person-add' },
+                        { label: 'Patients Today', value: metrics.today, color: PALETTE.blue, bg: PALETTE.bluLight, icon: 'today' },
+                        { label: 'Critical Alerts', value: 0, color: PALETTE.amber, bg: PALETTE.amberLight, icon: 'alert-circle' },
                     ].map(m => (
                         <View key={m.label} style={styles.metricCard}>
                             <View style={[styles.metricIcon, { backgroundColor: m.bg }]}>
@@ -158,7 +191,7 @@ export default function HospitalPatientsScreen({ navigation }) {
                     <Text style={[styles.th, { flex: 2 }]}>NAME / MRN</Text>
                     <Text style={[styles.th, { flex: 1 }]}>GENDER</Text>
                     <Text style={[styles.th, { flex: 1.5 }]}>LAST VISIT</Text>
-                    <Text style={[styles.th, { flex: 1, textAlign: 'right' }]}>STATUS</Text>
+                    <Text style={[styles.th, { flex: 1, textAlign: 'right' }]}>ACTION</Text>
                 </View>
 
                 {/* Patient Rows */}
@@ -180,11 +213,15 @@ export default function HospitalPatientsScreen({ navigation }) {
                                 : '—'}
                         </Text>
                         <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                            <View style={[styles.statusBadge, { backgroundColor: p.status === 'active' ? PALETTE.greenLight : PALETTE.amberLight }]}>
-                                <Text style={[styles.statusText, { color: p.status === 'active' ? PALETTE.green : PALETTE.amber }]}>
-                                    {p.status === 'active' ? 'Active' : 'New'}
-                                </Text>
-                            </View>
+                            <TouchableOpacity
+                                style={styles.viewRecordsBtn}
+                                onPress={() => navigation.navigate('HospitalPatientDetailScreen', {
+                                    patientId: p.id,
+                                    patientName: p.name
+                                })}
+                            >
+                                <Text style={styles.viewRecordsText}>View</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 ))}
@@ -202,6 +239,8 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: PALETTE.card, borderBottomWidth: 1, borderBottomColor: PALETTE.border },
     backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: PALETTE.bg, justifyContent: 'center', alignItems: 'center' },
     headerTitle: { fontSize: 17, fontWeight: '800', color: PALETTE.text },
+    headerSubtitleContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
+    headerSubtitleText: { fontSize: 13, color: PALETTE.sub, fontWeight: '500' },
 
     metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
     metricCard: { flex: 1, backgroundColor: PALETTE.card, borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border },
@@ -220,8 +259,8 @@ const styles = StyleSheet.create({
     name: { fontSize: 14, fontWeight: '700', color: PALETTE.text },
     mrn: { fontSize: 11, color: PALETTE.sub, marginTop: 2 },
     cell: { fontSize: 13, color: PALETTE.sub },
-    statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    statusText: { fontSize: 10, fontWeight: '800' },
+    viewRecordsBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: PALETTE.border, backgroundColor: PALETTE.bg },
+    viewRecordsText: { fontSize: 11, fontWeight: '700', color: PALETTE.text },
 
     emptyContainer: { alignItems: 'center', paddingTop: 60, gap: 12 },
     emptyText: { fontSize: 15, color: PALETTE.sub, fontWeight: '600' },

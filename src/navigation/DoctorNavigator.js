@@ -28,8 +28,10 @@ import DoctorAnalyzedResultScreen from '../screens/doctor/DoctorAnalyzedResultSc
 import DoctorDictateNotesScreen from '../screens/doctor/DoctorDictateNotesScreen';
 import DoctorAIChatScreen from '../screens/doctor/DoctorAIChatScreen';
 import DoctorAIChatListScreen from '../screens/doctor/DoctorAIChatListScreen';
+import DoctorSoapViewScreen from '../screens/doctor/DoctorSoapViewScreen';
 import DoctorScheduleScreen from '../screens/doctor/DoctorScheduleScreen';
 import DoctorAlertsScreen from '../screens/doctor/DoctorAlertsScreen';
+import DoctorLiveConsultScreen from '../screens/doctor/DoctorLiveConsultScreen';
 
 // Shared
 import VideoCallScreen from '../screens/VideoCallScreen';
@@ -129,10 +131,12 @@ export default function DoctorNavigator({ navigation }) {
       <Stack.Screen name="DoctorDictateNotesScreen" component={DoctorDictateNotesScreen} />
       <Stack.Screen name="DoctorAIChatScreen" component={DoctorAIChatScreen} />
       <Stack.Screen name="DoctorAIChatListScreen" component={DoctorAIChatListScreen} />
+      <Stack.Screen name="DoctorSoapViewScreen" component={DoctorSoapViewScreen} />
 
-      {/* 5. Schedule & Alerts */}
+      {/* 5. Schedule, Alerts & Live Consult */}
       <Stack.Screen name="DoctorScheduleScreen" component={DoctorScheduleScreen} />
       <Stack.Screen name="DoctorAlertsScreen" component={DoctorAlertsScreen} />
+      <Stack.Screen name="DoctorLiveConsultScreen" component={DoctorLiveConsultScreen} />
 
       {/* Shared */}
       <Stack.Screen name="VideoCallScreen" component={VideoCallScreen} />

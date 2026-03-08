@@ -27,36 +27,76 @@ export default function HospitalDirectoryScreen({ navigation }) {
     const loadDirectory = async () => {
         try {
             setLoading(true);
-            const [docsRes, membersRes] = await Promise.all([
-                hospitalAPI.getDoctors(),
-                hospitalAPI.getOrgMembers(),
-            ]);
+            try {
+                const dirRes = await hospitalAPI.getDirectory();
+                const data = dirRes.data || {};
 
-            // Doctors from /doctors/directory
-            const docList = docsRes.data?.results || docsRes.data || [];
-            setDoctors(docList.map(d => ({
-                id: d.id,
-                name: d.name || d.full_name || 'Unknown',
-                specialty: d.specialty || 'General Practice',
-                email: d.email || '',
-                phone: d.phone || '',
-                joinedAt: d.joinedAt || d.created_at || '',
-            })));
+                if (data.doctors) {
+                    setDoctors(data.doctors.map(d => ({
+                        id: d.id,
+                        name: d.name || 'Unknown',
+                        specialty: d.specialty || 'General Practice',
+                        email: d.email || '',
+                        phone: d.phone || '',
+                        joinedAt: d.joinedAt || '',
+                    })));
+                } else {
+                    setDoctors([]);
+                }
 
-            // Patients from /organization/members filtered by role
-            const members = membersRes.data || [];
-            const patientList = members.filter(m => m.role === 'patient').map(p => ({
-                id: p.id,
-                name: p.full_name || p.name || 'Unknown',
-                mrn: p.mrn || 'N/A',
-                gender: p.gender || 'N/A',
-                dateOfBirth: p.date_of_birth || p.dob || '',
-                email: p.email || '',
-                joinedAt: p.created_at || '',
-            }));
-            setPatients(patientList);
-        } catch (err) {
-            console.error('Directory load error:', err);
+                if (data.patients) {
+                    setPatients(data.patients.map(p => ({
+                        id: p.id,
+                        name: p.name || 'Unknown',
+                        mrn: p.mrn || 'N/A',
+                        gender: p.gender || 'N/A',
+                        dateOfBirth: p.dateOfBirth || '',
+                        email: p.email || '',
+                        joinedAt: p.joinedAt || '',
+                    })));
+                } else {
+                    setPatients([]);
+                }
+            } catch (err) {
+                // Fallback if endpoint unavilable
+                // Fetch doctors by other means if directory is standard
+                const [docsRes, membersRes, statusRes] = await Promise.allSettled([
+                    hospitalAPI.getDoctors(),
+                    hospitalAPI.getOrgMembers(),
+                    hospitalAPI.getDoctorsStatus()
+                ]);
+
+                const docList = docsRes.status === 'fulfilled' ? (docsRes.value.data?.results || docsRes.value.data || []) : [];
+                const statusData = statusRes.status === 'fulfilled' ? [
+                    ...(statusRes.value.data?.active_doctors || []),
+                    ...(statusRes.value.data?.inactive_doctors || [])
+                ] : [];
+
+                setDoctors(docList.map(d => {
+                    const statusInfo = statusData.find(s => s.id === d.id);
+                    return {
+                        id: d.id,
+                        name: d.name || d.full_name || 'Unknown',
+                        specialty: d.specialty || 'General Practice',
+                        email: d.email || '',
+                        phone: d.phone || '',
+                        joinedAt: d.joinedAt || d.created_at || '',
+                        status: statusInfo ? statusInfo.status : 'inactive'
+                    };
+                }));
+
+                const members = membersRes.status === 'fulfilled' ? (membersRes.value.data || []) : [];
+                const patientList = members.filter(m => m.role === 'patient').map(p => ({
+                    id: p.id,
+                    name: p.full_name || p.name || 'Unknown',
+                    mrn: p.mrn || 'N/A',
+                    gender: p.gender || 'N/A',
+                    dateOfBirth: p.date_of_birth || p.dob || '',
+                    email: p.email || '',
+                    joinedAt: p.created_at || '',
+                }));
+                setPatients(patientList);
+            }
         } finally {
             setLoading(false);
         }
@@ -145,19 +185,30 @@ export default function HospitalDirectoryScreen({ navigation }) {
                 ) : activeTab === 'doctors' ? (
                     filtered.map((doc, i) => (
                         <View key={doc.id || i} style={styles.card}>
-                            <View style={[styles.avatar, { backgroundColor: PALETTE.bluLight }]}>
-                                <Text style={[styles.avatarText, { color: PALETTE.blue }]}>
-                                    {(doc.name || 'D').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                </Text>
+                            <View style={styles.avatarWrapper}>
+                                <View style={[styles.avatar, { backgroundColor: PALETTE.bluLight }]}>
+                                    <Text style={[styles.avatarText, { color: PALETTE.blue }]}>
+                                        {(doc.name || 'D').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                    </Text>
+                                </View>
+                                <View style={[
+                                    styles.statusIndicator,
+                                    { backgroundColor: doc.status === 'active' ? PALETTE.green : PALETTE.sub }
+                                ]} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.name}>{doc.name}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.name}>{doc.name}</Text>
+                                    {doc.status === 'inactive' && (
+                                        <Text style={styles.awayText}>(Away)</Text>
+                                    )}
+                                </View>
                                 <Text style={styles.sub}>{doc.specialty}</Text>
                                 {doc.email ? <Text style={styles.meta}>{doc.email}</Text> : null}
                                 {doc.phone ? <Text style={styles.meta}>{doc.phone}</Text> : null}
                             </View>
-                            <View style={[styles.badge, { backgroundColor: PALETTE.bluLight }]}>
-                                <Text style={[styles.badgeText, { color: PALETTE.blue }]}>Doctor</Text>
+                            <View style={[styles.badge, { backgroundColor: doc.status === 'active' ? PALETTE.greenLight : PALETTE.bluLight }]}>
+                                <Text style={[styles.badgeText, { color: doc.status === 'active' ? PALETTE.green : PALETTE.blue }]}>Doctor</Text>
                             </View>
                         </View>
                     ))
@@ -180,10 +231,11 @@ export default function HospitalDirectoryScreen({ navigation }) {
                             </View>
                         </View>
                     ))
-                )}
+                )
+                }
                 <View style={{ height: 80 }} />
-            </ScrollView>
-        </SafeAreaView>
+            </ScrollView >
+        </SafeAreaView >
     );
 }
 
@@ -206,8 +258,11 @@ const styles = StyleSheet.create({
     list: { paddingHorizontal: 20 },
     card: { flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.card, borderRadius: 16, padding: 14, marginBottom: 10, gap: 14, borderWidth: 1, borderColor: PALETTE.border },
     avatar: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    avatarWrapper: { position: 'relative' },
+    statusIndicator: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: PALETTE.card },
     avatarText: { fontSize: 15, fontWeight: '800' },
     name: { fontSize: 15, fontWeight: '700', color: PALETTE.text },
+    awayText: { fontSize: 11, color: '#94A3B8', fontStyle: 'italic' },
     sub: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
     meta: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
     badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },

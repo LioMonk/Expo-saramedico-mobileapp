@@ -25,6 +25,10 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
    const [showGenderDropdown, setShowGenderDropdown] = useState(false);
    const [address, setAddress] = useState('');
    const [medicalHistory, setMedicalHistory] = useState('');
+   const [allergies, setAllergies] = useState('');
+   const [medications, setMedications] = useState('');
+   const [emergencyContactName, setEmergencyContactName] = useState('');
+   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
    const [loading, setLoading] = useState(false);
    const [showPassword, setShowPassword] = useState(false);
    const [photoUri, setPhotoUri] = useState(null);
@@ -95,7 +99,10 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
             date_of_birth: dateOfBirth.toISOString().split('T')[0],
             gender: gender ? gender.toLowerCase() : undefined,
             address: address ? { street: address } : undefined,
-            emergency_contact: {},
+            emergency_contact: emergencyContactName || emergencyContactPhone ? { name: emergencyContactName, phone: emergencyContactPhone } : undefined,
+            medical_history: medicalHistory || undefined,
+            allergies: allergies ? allergies.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+            medications: medications ? medications.split(',').map(s => s.trim()).filter(Boolean) : undefined,
          });
 
          const patientId = response.data?.patient?.id || response.data?.id;
@@ -174,19 +181,7 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
 
             <ScrollView showsVerticalScrollIndicator={false}>
 
-               {/* Photo Upload */}
-               <View style={styles.photoContainer}>
-                  <TouchableOpacity style={styles.photoCircle} onPress={handlePhotoPicker}>
-                     {photoUri ? (
-                        <Image source={{ uri: photoUri }} style={{ width: 90, height: 90, borderRadius: 45 }} />
-                     ) : (
-                        <Ionicons name="person" size={40} color="#999" />
-                     )}
-                     <View style={styles.editBadge}>
-                        <Ionicons name="camera" size={14} color="white" />
-                     </View>
-                  </TouchableOpacity>
-               </View>
+
 
                {/* Form Fields */}
                <Text style={styles.sectionLabel}>PERSONAL INFORMATION</Text>
@@ -304,11 +299,48 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
 
                <Text style={styles.label}>Medical History</Text>
                <TextInput
-                  placeholder="Previous conditions, allergies, medications..."
+                  placeholder="Previous conditions, surgeries..."
                   style={[styles.input, { height: 80 }]}
                   value={medicalHistory}
                   onChangeText={setMedicalHistory}
                   multiline
+               />
+
+               <Text style={styles.label}>Allergies (comma-separated)</Text>
+               <TextInput
+                  placeholder="e.g. Penicillin, Peanuts"
+                  style={[styles.input, { height: 60 }]}
+                  value={allergies}
+                  onChangeText={setAllergies}
+                  multiline
+               />
+
+               <Text style={styles.label}>Medications (comma-separated)</Text>
+               <TextInput
+                  placeholder="e.g. Aspirin, Lipitor"
+                  style={[styles.input, { height: 60 }]}
+                  value={medications}
+                  onChangeText={setMedications}
+                  multiline
+               />
+
+               <Text style={styles.sectionLabel}>EMERGENCY CONTACT</Text>
+
+               <Text style={styles.label}>Contact Name</Text>
+               <TextInput
+                  placeholder="e.g. Jane Doe"
+                  style={styles.input}
+                  value={emergencyContactName}
+                  onChangeText={setEmergencyContactName}
+               />
+
+               <Text style={styles.label}>Contact Phone</Text>
+               <TextInput
+                  placeholder="e.g. +1 555-1234"
+                  style={styles.input}
+                  value={emergencyContactPhone}
+                  onChangeText={setEmergencyContactPhone}
+                  keyboardType="phone-pad"
                />
 
                <View style={{ height: 100 }} />

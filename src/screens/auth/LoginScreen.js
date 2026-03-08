@@ -200,10 +200,11 @@ export default function LoginScreen({ navigation }) {
 
         {/* Logo Section */}
         <View style={styles.headerCenter}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="medkit" size={40} color={COLORS.primary} />
-            <Text style={styles.headerTitle}>Saramedico</Text>
-          </View>
+          <Image
+            source={require('../../../assets/icon_new.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Tab Switcher */}
@@ -282,7 +283,7 @@ const styles = StyleSheet.create({
   content: { padding: 25, flex: 1, justifyContent: 'center' },
 
   headerCenter: { alignItems: 'center', marginBottom: 30 },
-  headerTitle: { fontSize: 26, fontWeight: 'bold', color: '#00A3FF', marginLeft: 10 },
+  logo: { width: '100%', height: 60 },
 
   // Tabs
   tabContainer: { flexDirection: 'row', backgroundColor: '#F0F2F5', borderRadius: 30, padding: 4, marginBottom: 20 },

@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import AdminBottomNavBar from '../../components/AdminBottomNavBar';
-import { authAPI, adminAPI, clearTokens } from '../../services/api';
+import { authAPI, adminAPI, hospitalAPI, clearTokens } from '../../services/api';
 import SignOutModal from '../../components/SignOutModal';
 
 export default function AdminSettingsScreen({ navigation }) {
@@ -98,14 +98,37 @@ export default function AdminSettingsScreen({ navigation }) {
     };
 
     const handleToggleMFA = async (value) => {
-        try {
-            setMfaEnabled(value);
-            await authAPI.updateProfile({ mfa_enabled: value });
-            Alert.alert('Success', value ? 'MFA enabled' : 'MFA disabled');
-        } catch (error) {
-            setMfaEnabled(!value); // Revert on error
-            Alert.alert('Error', 'Failed to update MFA settings');
+        // If turning OFF
+        if (!value) {
+            Alert.alert(
+                "Disable MFA",
+                "Are you sure you want to disable Two-Factor Authentication?",
+                [
+                    { text: "Cancel", style: "cancel", onPress: () => setMfaEnabled(true) },
+                    {
+                        text: "Disable",
+                        style: "destructive",
+                        onPress: async () => {
+                            try {
+                                await authAPI.disableMFA();
+                                setMfaEnabled(false);
+                            } catch (error) {
+                                Alert.alert('Error', 'Failed to disable MFA');
+                                setMfaEnabled(true);
+                            }
+                        }
+                    }
+                ]
+            );
+            return;
         }
+
+        // If turning ON
+        Alert.alert(
+            "Enable MFA",
+            "MFA requires a setup flow with an authenticator app. Please use the web dashboard to complete the initial setup.",
+            [{ text: "OK", onPress: () => setMfaEnabled(false) }]
+        );
     };
 
     const handleSignOut = async () => {

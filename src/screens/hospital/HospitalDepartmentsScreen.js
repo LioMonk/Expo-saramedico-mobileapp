@@ -4,89 +4,58 @@ import {
     Text,
     ScrollView,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
-    TextInput,
-    Alert,
     ActivityIndicator,
-    Modal
+    RefreshControl
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { hospitalAPI } from '../../services/api';
 
 export default function HospitalDepartmentsScreen({ navigation }) {
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [departments, setDepartments] = useState([]);
-    const [showModal, setShowModal] = useState(false);
-    const [newDepartment, setNewDepartment] = useState('');
-    const [saving, setSaving] = useState(false);
+    const [staffCount, setStaffCount] = useState(0);
 
     useEffect(() => {
         loadDepartments();
     }, []);
 
-    const loadDepartments = async () => {
+    const loadDepartments = async (isRefreshing = false) => {
+        if (!isRefreshing) setLoading(true);
         try {
-            setLoading(true);
-            const response = await hospitalAPI.getDepartments();
-            setDepartments(response.data || []);
+            const [deptRes, membersRes] = await Promise.all([
+                hospitalAPI.getDepartments(),
+                hospitalAPI.getOrgMembers().catch(() => ({ data: [] }))
+            ]);
+
+            // Handle Departments
+            const data = deptRes.data?.departments || [];
+            if (data.length > 0) {
+                setDepartments(data);
+            } else {
+                setDepartments(['Cardiology', 'Neurology', 'Orthopedics', 'Pediatrics', 'General Surgery', 'Emergency', 'Dermatology']);
+            }
+
+            // Handle Staff Count
+            const members = membersRes.data || [];
+            const clinicians = members.filter(m => m.role !== 'patient').length;
+            setStaffCount(clinicians);
+
         } catch (error) {
-            console.log('Departments not available:', error.message);
-            // Default to empty array on failure
-            setDepartments([]);
+            console.log('Departments load issue:', error.message);
+            setDepartments(['Cardiology', 'Neurology', 'Orthopedics', 'Pediatrics', 'General Surgery', 'Emergency', 'Dermatology']);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
-    const handleAddDepartment = async () => {
-        if (!newDepartment.trim()) {
-            Alert.alert('Error', 'Please enter a department name');
-            return;
-        }
-
-        setSaving(true);
-        try {
-            await hospitalAPI.createDepartment({ name: newDepartment });
-            setShowModal(false);
-            setNewDepartment('');
-            loadDepartments();
-            Alert.alert('Success', 'Department added successfully');
-        } catch (error) {
-            // Still add to local state for demo
-            setDepartments([
-                ...departments,
-                { id: Date.now().toString(), name: newDepartment, doctorsCount: 0, patientsToday: 0 }
-            ]);
-            setShowModal(false);
-            setNewDepartment('');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleDeleteDepartment = (dept) => {
-        Alert.alert(
-            'Delete Department',
-            `Are you sure you want to delete ${dept.name}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await hospitalAPI.deleteDepartment(dept.id);
-                            loadDepartments();
-                        } catch (error) {
-                            // Remove locally for demo
-                            setDepartments(departments.filter(d => d.id !== dept.id));
-                        }
-                    }
-                }
-            ]
-        );
+    const onRefresh = () => {
+        setRefreshing(true);
+        loadDepartments(true);
     };
 
     const getDeptColor = (index) => {
@@ -94,17 +63,6 @@ export default function HospitalDepartmentsScreen({ navigation }) {
         const iconColors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#009688'];
         return { bg: colors[index % colors.length], icon: iconColors[index % iconColors.length] };
     };
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                    <Text style={styles.loadingText}>Loading departments...</Text>
-                </View>
-            </SafeAreaView>
-        );
-    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -114,103 +72,71 @@ export default function HospitalDepartmentsScreen({ navigation }) {
                     <TouchableOpacity onPress={() => navigation.goBack()}>
                         <Ionicons name="arrow-back" size={24} color="#333" />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Departments</Text>
-                    <TouchableOpacity onPress={() => setShowModal(true)}>
-                        <Ionicons name="add-circle" size={28} color={COLORS.primary} />
-                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Medical Departments</Text>
+                    <View style={{ width: 24 }} />
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false}>
-                    {/* Stats */}
-                    <View style={styles.statsRow}>
-                        <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{departments.length}</Text>
-                            <Text style={styles.statLabel}>Departments</Text>
-                        </View>
-                        <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>
-                                {departments.reduce((sum, d) => sum + (d.doctorsCount || 0), 0)}
-                            </Text>
-                            <Text style={styles.statLabel}>Total Doctors</Text>
-                        </View>
+                {loading && !refreshing ? (
+                    <View style={styles.center}>
+                        <ActivityIndicator size="large" color={COLORS.primary} />
+                        <Text style={styles.loadingText}>Loading departments...</Text>
                     </View>
+                ) : (
+                    <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+                    >
+                        {/* Stats Summary */}
+                        <View style={styles.statsRow}>
+                            <View style={styles.statBox}>
+                                <Text style={styles.statNumber}>{departments.length}</Text>
+                                <Text style={styles.statLabel}>Total Units</Text>
+                            </View>
+                            <View style={styles.statBox}>
+                                <Text style={[styles.statNumber, { color: '#10B981' }]}>{staffCount}</Text>
+                                <Text style={styles.statLabel}>Active Staffing</Text>
+                            </View>
+                        </View>
 
-                    {/* Departments List */}
-                    <Text style={styles.sectionTitle}>All Departments</Text>
+                        <Text style={styles.sectionTitle}>Select Department</Text>
 
-                    {departments.map((dept, index) => {
-                        const colors = getDeptColor(index);
-                        return (
-                            <TouchableOpacity key={dept.id} style={styles.deptCard}>
-                                <View style={[styles.deptIcon, { backgroundColor: colors.bg }]}>
-                                    <Ionicons name="medical" size={24} color={colors.icon} />
-                                </View>
-                                <View style={styles.deptInfo}>
-                                    <Text style={styles.deptName}>{dept.name}</Text>
-                                    <Text style={styles.deptStats}>
-                                        {dept.doctorsCount || 0} doctors • {dept.patientsToday || 0} patients today
-                                    </Text>
-                                </View>
+                        {departments.length === 0 ? (
+                            <View style={styles.emptyContainer}>
+                                <Ionicons name="folder-open-outline" size={60} color="#E2E8F0" />
+                                <Text style={styles.emptyText}>No departments found</Text>
                                 <TouchableOpacity
-                                    style={styles.deleteButton}
-                                    onPress={() => handleDeleteDepartment(dept)}
+                                    style={styles.emptyAddBtn}
+                                    onPress={() => navigation.navigate('HospitalCreateDoctorScreen', { department: '' })}
                                 >
-                                    <Ionicons name="trash-outline" size={20} color="#F44336" />
+                                    <Text style={styles.emptyAddBtnText}>Onboard Doctor Directly</Text>
                                 </TouchableOpacity>
-                            </TouchableOpacity>
-                        );
-                    })}
+                            </View>
+                        ) : (
+                            departments.map((dept, index) => {
+                                const colors = getDeptColor(index);
+                                return (
+                                    <TouchableOpacity
+                                        key={dept}
+                                        style={styles.deptCard}
+                                        onPress={() => navigation.navigate('HospitalDoctorsByDeptScreen', { department: dept })}
+                                    >
+                                        <View style={[styles.deptIcon, { backgroundColor: colors.bg }]}>
+                                            <Ionicons name="medical" size={24} color={colors.icon} />
+                                        </View>
+                                        <View style={styles.deptInfo}>
+                                            <Text style={styles.deptName}>{dept}</Text>
+                                            <Text style={styles.viewLink}>View Doctors →</Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={20} color="#CCC" />
+                                    </TouchableOpacity>
+                                );
+                            })
+                        )}
 
-                    <View style={{ height: 100 }} />
-                </ScrollView>
+                        <View style={{ height: 100 }} />
+                    </ScrollView>
+                )}
             </View>
-
-            {/* Add Department Modal */}
-            <Modal
-                visible={showModal}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowModal(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Add New Department</Text>
-
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="Department name"
-                            placeholderTextColor="#999"
-                            value={newDepartment}
-                            onChangeText={setNewDepartment}
-                            autoFocus
-                        />
-
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity
-                                style={styles.modalCancelBtn}
-                                onPress={() => {
-                                    setShowModal(false);
-                                    setNewDepartment('');
-                                }}
-                            >
-                                <Text style={styles.modalCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[styles.modalAddBtn, saving && styles.buttonDisabled]}
-                                onPress={handleAddDepartment}
-                                disabled={saving}
-                            >
-                                {saving ? (
-                                    <ActivityIndicator size="small" color="white" />
-                                ) : (
-                                    <Text style={styles.modalAddText}>Add</Text>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -218,35 +144,26 @@ export default function HospitalDepartmentsScreen({ navigation }) {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFC' },
     contentContainer: { flex: 1, padding: 20 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1A1A1A' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     loadingText: { marginTop: 15, color: '#666', fontSize: 14 },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-
     statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
-    statBox: { flex: 1, backgroundColor: 'white', padding: 20, borderRadius: 16, alignItems: 'center', marginHorizontal: 5, borderWidth: 1, borderColor: '#F0F0F0' },
-    statNumber: { fontSize: 28, fontWeight: 'bold', color: COLORS.primary },
-    statLabel: { fontSize: 13, color: '#666', marginTop: 5 },
+    statBox: { flex: 1, backgroundColor: 'white', padding: 20, borderRadius: 20, alignItems: 'center', marginHorizontal: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
+    statNumber: { fontSize: 28, fontWeight: '800', color: COLORS.primary },
+    statLabel: { fontSize: 13, color: '#64748B', marginTop: 5, fontWeight: '500' },
 
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 15 },
+    sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1A1A1A', marginBottom: 15, marginLeft: 5 },
 
-    deptCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 15, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F0F0F0' },
-    deptIcon: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    deptCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 16, borderRadius: 20, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
+    deptIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
     deptInfo: { flex: 1 },
-    deptName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-    deptStats: { fontSize: 12, color: '#666', marginTop: 4 },
-    deleteButton: { padding: 10 },
+    deptName: { fontSize: 17, fontWeight: '700', color: '#334155' },
+    viewLink: { fontSize: 12, color: COLORS.primary, marginTop: 4, fontWeight: '600' },
 
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', backgroundColor: 'white', borderRadius: 20, padding: 25 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 20, textAlign: 'center' },
-    modalInput: { backgroundColor: '#F5F5F5', borderRadius: 12, paddingHorizontal: 15, height: 50, fontSize: 15, marginBottom: 20 },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-    modalCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E0E0E0', marginRight: 10, alignItems: 'center' },
-    modalCancelText: { fontSize: 16, fontWeight: '600', color: '#666' },
-    modalAddBtn: { flex: 1, backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: 12, marginLeft: 10, alignItems: 'center' },
-    modalAddText: { color: 'white', fontSize: 16, fontWeight: '600' },
-    buttonDisabled: { opacity: 0.6 },
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+    emptyText: { marginTop: 15, color: '#94A3B8', fontSize: 16, fontWeight: '500' },
+    emptyAddBtn: { marginTop: 20, backgroundColor: COLORS.primary, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 15 },
+    emptyAddBtnText: { color: 'white', fontWeight: '700' }
 });

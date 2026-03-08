@@ -11,8 +11,10 @@ import EventSource from 'react-native-sse';
 import Markdown from 'react-native-markdown-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function DoctorAIChatScreen({ navigation, route }) {
-    const { patientId: initialPatientId } = route.params || {};
+export default function DoctorAIChatScreen({ navigation, route, patientId: propPatientId, embedded: propEmbedded }) {
+    const { patientId: routePatientId, embedded: routeEmbedded } = route?.params || {};
+    const initialPatientId = propPatientId || routePatientId;
+    const embedded = propEmbedded || routeEmbedded;
 
     const [chatMode, setChatMode] = useState(initialPatientId ? 'patient' : 'general');
     const [selectedPatientId, setSelectedPatientId] = useState(initialPatientId || '');
@@ -365,22 +367,26 @@ export default function DoctorAIChatScreen({ navigation, route }) {
         );
     };
 
+    const Container = embedded ? View : SafeAreaView;
+
     return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color="#333" />
-                </TouchableOpacity>
-                <View style={styles.headerCenter}>
-                    <Text style={styles.headerTitle}>AI Assistant</Text>
-                    <Text style={styles.headerSubtitle}>{chatMode === 'patient' ? getSelectedPatientName() : 'General Consultation'}</Text>
-                </View>
-                {chatMode === 'patient' && (
-                    <TouchableOpacity style={styles.menuButton} onPress={() => setShowHistoryModal(true)}>
-                        <Ionicons name="time-outline" size={24} color="#333" />
+        <Container style={styles.container}>
+            {!embedded && (
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                        <Ionicons name="arrow-back" size={24} color="#333" />
                     </TouchableOpacity>
-                )}
-            </View>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerTitle}>AI Assistant</Text>
+                        <Text style={styles.headerSubtitle}>{chatMode === 'patient' ? getSelectedPatientName() : 'General Consultation'}</Text>
+                    </View>
+                    {chatMode === 'patient' && (
+                        <TouchableOpacity style={styles.menuButton} onPress={() => setShowHistoryModal(true)}>
+                            <Ionicons name="time-outline" size={24} color="#333" />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
 
             {chatMode === 'patient' && (
                 <View style={styles.contextBar}>
@@ -592,7 +598,7 @@ export default function DoctorAIChatScreen({ navigation, route }) {
                     </ScrollView>
                 </SafeAreaView>
             </Modal>
-        </SafeAreaView>
+        </Container>
     );
 }
 

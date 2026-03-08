@@ -5,14 +5,15 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../../services/config';
+import { hospitalAPI } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -31,11 +32,15 @@ export default function HospitalAnalyticsScreen({ navigation }) {
 
     const fetchAnalytics = async () => {
         try {
-            const token = await AsyncStorage.getItem('userToken');
-            const response = await axios.get(`${API_CONFIG.BASE_URL}/analytics/hospital`, {
-                headers: { Authorization: `Bearer ${token}` },
+            setLoading(true);
+            const response = await hospitalAPI.getOverview();
+            const data = response.data || {};
+            setMetrics({
+                totalPatients: data.metrics?.activePatients || data.total_patients || 0,
+                totalAppointments: data.metrics?.totalAppointments || data.total_appointments || 0,
+                totalRevenue: data.metrics?.revenue || 0,
+                activeDoctors: data.metrics?.activeDoctors || data.total_doctors || 0,
             });
-            setMetrics(response.data.metrics || metrics);
         } catch (error) {
             console.error('Error fetching analytics:', error);
         } finally {

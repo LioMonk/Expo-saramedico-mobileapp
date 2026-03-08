@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity,
-  Switch, Modal, TextInput, ActivityIndicator, Alert
+  Switch, Modal, TextInput, ActivityIndicator, Alert, Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../constants/theme';
 import SignOutModal from '../../components/SignOutModal';
 import { authAPI, patientAPI } from '../../services/api';
+import { TOKEN_CONFIG, API_CONFIG } from '../../services/config';
+import { SvgUri } from 'react-native-svg';
 
 export default function PatientSettingsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -14,8 +18,6 @@ export default function PatientSettingsScreen({ navigation }) {
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [showSignOut, setShowSignOut] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editField, setEditField] = useState(null);
 
   // Password change states
   const [oldPassword, setOldPassword] = useState('');
@@ -23,11 +25,8 @@ export default function PatientSettingsScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // Edit field states
-  const [editValue, setEditValue] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
-
   useEffect(() => {
+    console.log('🔗 [PatientSettings] API_CONFIG:', JSON.stringify(API_CONFIG, null, 2));
     loadProfile();
   }, []);
 
@@ -35,6 +34,8 @@ export default function PatientSettingsScreen({ navigation }) {
     try {
       setLoading(true);
       const response = await authAPI.getCurrentUser();
+      console.log('👤 [PatientSettings] Profile loaded. Name:', response.data.full_name || response.data.name);
+      console.log('🖼️  [PatientSettings] Avatar URL:', response.data.avatar_url);
       setProfile(response.data);
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -76,35 +77,45 @@ export default function PatientSettingsScreen({ navigation }) {
     }
   };
 
-  const handleEditField = (field, currentValue) => {
-    setEditField(field);
-    setEditValue(currentValue);
-    setShowEditModal(true);
-  };
 
-  const saveFieldEdit = async () => {
-    if (!editValue) {
-      Alert.alert('Error', 'Value cannot be empty');
-      return;
-    }
 
+  const handleImagePick = async () => {
     try {
-      setEditLoading(true);
-      const updateData = {};
-      updateData[editField] = editValue;
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'image/jpg'],
+        copyToCacheDirectory: true,
+      });
 
-      await patientAPI.updateProfile(updateData);
+      if (result.type === 'success' || !result.canceled) {
+        const file = result.assets ? result.assets[0] : result;
+        const imageUri = file.uri;
 
-      // Update local state
-      setProfile({ ...profile, [editField]: editValue });
+        // Optimistic update
+        setProfile(prev => ({ ...prev, avatar_url: imageUri }));
 
-      Alert.alert('Success', 'Profile updated successfully');
-      setShowEditModal(false);
+        try {
+          const uploadRes = await authAPI.uploadAvatar(imageUri);
+          const serverUrl = uploadRes.preview_url || uploadRes.avatar_url || uploadRes.url;
+
+          if (serverUrl) {
+            setProfile(prev => ({ ...prev, avatar_url: serverUrl }));
+
+            // Save server URL locally for persistence using standardized key
+            const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
+            if (userDataLocal) {
+              const parsedUserData = JSON.parse(userDataLocal);
+              parsedUserData.avatar_url = serverUrl;
+              parsedUserData.avatar = serverUrl;
+              await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUserData));
+            }
+          }
+        } catch (err) {
+          console.error('Avatar upload error:', err);
+          Alert.alert('Upload Error', 'Failed to save profile picture.');
+        }
+      }
     } catch (error) {
-      console.error('Profile update error:', error);
-      Alert.alert('Error', 'Failed to update profile');
-    } finally {
-      setEditLoading(false);
+      console.error('Error picking image:', error);
     }
   };
 
@@ -143,108 +154,131 @@ export default function PatientSettingsScreen({ navigation }) {
 
           {/* Profile Header */}
           <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={40} color="#FFF" />
+            <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePick}>
+              {profile?.avatar_url ? (
+                profile.avatar_url.toLowerCase().includes('.svg') ? (
+                  <View style={styles.avatar}>
+                    <SvgUri
+                      width="100%"
+                      height="100%"
+                      uri={profile.avatar_url}
+                      onError={(e) => {
+                        console.error('❌ [Avatar] SVG failed to load:', profile.avatar_url);
+                      }}
+                      onLoad={() => {
+                        console.log('✅ [Avatar] SVG loaded successfully:', profile.avatar_url);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: profile.avatar_url }}
+                    style={styles.avatar}
+                    resizeMode="cover"
+                    onError={(e) => {
+                      console.error('❌ [Avatar] Image failed to load:', profile.avatar_url);
+                    }}
+                    onLoad={() => {
+                      console.log('✅ [Avatar] Image loaded successfully:', profile.avatar_url);
+                    }}
+                  />
+                )
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={40} color="#FFF" />
+                </View>
+              )}
+              <View style={styles.editBadge}>
+                <Ionicons name="pencil" size={14} color="white" />
               </View>
-            </View>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleImagePick}>
+              <Text style={{ fontSize: 13, color: '#4f46e5', fontWeight: '500', marginBottom: 12 }}>
+                Upload Image / Avatar
+              </Text>
+            </TouchableOpacity>
             <Text style={styles.nameText}>{profile?.name || profile?.full_name || 'Patient'}</Text>
             <Text style={styles.roleText}>Patient ID: {profile?.id?.substring(0, 8) || 'N/A'}</Text>
+          </View>
+
+          {/* BASIC INFORMATION Section */}
+          <Text style={styles.sectionLabel}>BASIC INFORMATION</Text>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="person-outline" size={20} color="#555" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>Legal First Name</Text>
+                <Text style={styles.itemSub}>{profile?.first_name || profile?.full_name?.split(" ")[0] || 'N/A'}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="person-outline" size={20} color="#555" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>Legal Last Name</Text>
+                <Text style={styles.itemSub}>{profile?.last_name || profile?.full_name?.split(" ").slice(1).join(" ") || 'N/A'}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="calendar-outline" size={20} color="#555" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>Date of Birth</Text>
+                <Text style={styles.itemSub}>{profile?.date_of_birth || profile?.dateOfBirth || profile?.dob || 'N/A'}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="card-outline" size={20} color="#555" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>Social Security Number</Text>
+                <Text style={styles.itemSub}>{profile?.ssn || '***-**-****'}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="medical-outline" size={20} color="#555" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>MRN</Text>
+                <Text style={styles.itemSub}>{profile?.mrn || 'N/A'}</Text>
+              </View>
+            </View>
           </View>
 
           {/* CONTACT INFORMATION Section */}
           <Text style={styles.sectionLabel}>CONTACT INFORMATION</Text>
           <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => handleEditField('email', profile?.email)}
-            >
+            <View style={styles.row}>
               <View style={styles.iconBox}><Ionicons name="mail-outline" size={20} color="#555" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemTitle}>Email</Text>
                 <Text style={styles.itemSub}>{profile?.email || 'Not set'}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#CCC" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => handleEditField('phone_number', profile?.phone_number)}
-            >
-              <View style={styles.iconBox}><Ionicons name="call-outline" size={20} color="#555" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>Phone</Text>
-                <Text style={styles.itemSub}>{profile?.phone_number || 'Not set'}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#CCC" />
-            </TouchableOpacity>
-          </View>
-
-          {/* SECURITY Section */}
-          <Text style={styles.sectionLabel}>SECURITY</Text>
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => setShowPasswordModal(true)}
-            >
-              <View style={styles.iconBox}><Ionicons name="lock-closed-outline" size={20} color="#555" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>Change Password</Text>
-                <Text style={styles.itemSub}>Update your password</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#CCC" />
-            </TouchableOpacity>
+            </View>
 
             <View style={styles.divider} />
 
             <View style={styles.row}>
-              <View style={styles.iconBox}><Ionicons name="shield-checkmark-outline" size={20} color="#555" /></View>
+              <View style={styles.iconBox}><Ionicons name="call-outline" size={20} color="#555" /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>Two-Factor Auth</Text>
-                <Text style={styles.itemSub}>{is2FAEnabled ? 'Enabled' : 'Disabled'}</Text>
+                <Text style={styles.itemTitle}>Mobile Phone</Text>
+                <Text style={styles.itemSub}>{profile?.phone_number || profile?.phoneNumber || profile?.phone || 'Not set'}</Text>
               </View>
-              <Switch
-                value={is2FAEnabled}
-                onValueChange={setIs2FAEnabled}
-                trackColor={{ false: "#DDD", true: COLORS.primary }}
-                thumbColor="white"
-              />
             </View>
-          </View>
-
-          {/* PRIVACY & DATA Section */}
-          <Text style={styles.sectionLabel}>PRIVACY & DATA</Text>
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => navigation.navigate('AuditLogScreen')}
-            >
-              <View style={styles.iconBox}><Ionicons name="list-outline" size={20} color="#555" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>Audit Logs</Text>
-                <Text style={styles.itemSub}>View your activity history</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#CCC" />
-            </TouchableOpacity>
 
             <View style={styles.divider} />
 
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => navigation.navigate('DeleteAccountScreen')}
-            >
-              <View style={[styles.iconBox, { backgroundColor: '#FFEBEE' }]}>
-                <Ionicons name="trash-outline" size={20} color="#D32F2F" />
-              </View>
+            <View style={styles.row}>
+              <View style={styles.iconBox}><Ionicons name="home-outline" size={20} color="#555" /></View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.itemTitle, { color: '#D32F2F' }]}>Delete Account</Text>
-                <Text style={styles.itemSub}>Permanently delete your account</Text>
+                <Text style={styles.itemTitle}>Home Phone</Text>
+                <Text style={styles.itemSub}>{profile?.homePhone || profile?.home_phone || 'Not set'}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#CCC" />
-            </TouchableOpacity>
+            </View>
           </View>
+
+
+
 
           {/* Sign Out Button */}
           <TouchableOpacity style={styles.signOutBtn} onPress={() => setShowSignOut(true)}>
@@ -311,49 +345,7 @@ export default function PatientSettingsScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Edit Field Modal */}
-      <Modal
-        visible={showEditModal}
-        transparent={true}
-        animationType="slide"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Edit {editField === 'email' ? 'Email' : 'Phone Number'}
-            </Text>
 
-            <TextInput
-              style={styles.modalInput}
-              placeholder={editField === 'email' ? 'Email' : 'Phone Number'}
-              value={editValue}
-              onChangeText={setEditValue}
-              keyboardType={editField === 'email' ? 'email-address' : 'phone-pad'}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowEditModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
-                onPress={saveFieldEdit}
-                disabled={editLoading}
-              >
-                {editLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <SignOutModal
         visible={showSignOut}
@@ -373,7 +365,9 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 40 },
   profileHeader: { alignItems: 'center', marginBottom: 30 },
   avatarContainer: { position: 'relative', marginBottom: 15 },
+  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#E0E0E0' },
   avatarPlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#B39DDB', justifyContent: 'center', alignItems: 'center' },
+  editBadge: { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' },
   nameText: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 4 },
   roleText: { fontSize: 12, color: '#999', letterSpacing: 0.5 },
   sectionLabel: { fontSize: 12, fontWeight: 'bold', color: '#666', marginBottom: 10, marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' },

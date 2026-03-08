@@ -138,14 +138,30 @@ export default function HospitalTeamScreen({ navigation }) {
                         </View>
                     </View>
 
-                    {/* Invite Button */}
-                    <TouchableOpacity
-                        style={styles.inviteButton}
-                        onPress={() => navigation.navigate('HospitalInviteTeamScreen')}
-                    >
-                        <Ionicons name="person-add-outline" size={20} color="white" />
-                        <Text style={styles.inviteButtonText}>Invite Team Member</Text>
-                    </TouchableOpacity>
+                    {/* Action Buttons */}
+                    <View style={styles.actionRow}>
+                        <TouchableOpacity
+                            style={styles.actionQuickBtn}
+                            onPress={() => navigation.navigate('HospitalDepartmentsScreen')}
+                        >
+                            <Ionicons name="grid-outline" size={22} color={COLORS.primary} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.actionQuickBtn, { flex: 2, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+                            onPress={() => navigation.navigate('HospitalCreateDoctorScreen')}
+                        >
+                            <Ionicons name="medkit-outline" size={22} color="#16A34A" />
+                            <Text style={[styles.actionQuickBtnText, { color: '#16A34A' }]}>Onboard Doctor</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.actionQuickBtn, { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+                            onPress={() => navigation.navigate('HospitalInviteTeamScreen')}
+                        >
+                            <Ionicons name="person-add-outline" size={22} color="white" />
+                        </TouchableOpacity>
+                    </View>
 
                     {/* Team Members List */}
                     <Text style={styles.sectionTitle}>Team Members ({teamMembers.length})</Text>
@@ -221,8 +237,11 @@ const styles = StyleSheet.create({
     statNumber: { fontSize: 24, fontWeight: 'bold', color: COLORS.primary },
     statLabel: { fontSize: 12, color: '#666', marginTop: 4 },
 
-    inviteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, marginBottom: 25 },
-    inviteButtonText: { color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 10 },
+    actionRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
+    actionQuickBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E3F2FD', height: 60, borderRadius: 16, borderWidth: 1, borderColor: '#BBDEFB' },
+    actionQuickBtnText: { fontSize: 13, fontWeight: '700', marginLeft: 8 },
+    inviteButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, height: 60, borderRadius: 16 },
+    inviteButtonText: { color: 'white', fontSize: 15, fontWeight: '700', marginLeft: 8 },
 
     sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 15 },
 

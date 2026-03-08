@@ -39,14 +39,29 @@ export default function VideoCallScreen({ route, navigation }) {
   }, []);
 
   const loadUserData = async () => {
-    const data = await getUserData();
-    setUserData(data);
+    try {
+      const data = await getUserData();
+      setUserData(data);
 
-    // Auto-set name for doctor
-    if (data && data.role === 'doctor') {
-      setUserName(`Dr. ${data.first_name} ${data.last_name}`);
-    } else if (data) {
-      setUserName(`${data.first_name} ${data.last_name}`);
+      if (data) {
+        let name = '';
+        if (data.role === 'doctor') {
+          name = data.name || data.full_name ||
+            (data.first_name ? `Dr. ${data.first_name} ${data.last_name || ''}` : 'Doctor');
+        } else {
+          name = data.full_name || data.name ||
+            (data.first_name ? `${data.first_name} ${data.last_name || ''}` : 'Patient');
+        }
+
+        // Final safety check against stringified undefined
+        if (name.includes('undefined')) {
+          name = data.full_name || data.name || (data.role === 'doctor' ? 'Doctor' : 'Patient');
+        }
+
+        setUserName(name.trim());
+      }
+    } catch (error) {
+      console.error('Error loading user data for video call:', error);
     }
   };
 
@@ -60,8 +75,38 @@ export default function VideoCallScreen({ route, navigation }) {
 
     // Extract from join_url if needed
     // Example: https://zoom.us/j/1234567890?pwd=xxx
-    const match = appointment.join_url?.match(/\/j\/(\d+)/);
+    const match = (appointment.join_url || appointment.start_url)?.match(/\/j\/(\d+)/);
     return match ? match[1] : null;
+  };
+
+  /**
+   * Helper to identify if it's a Google Meet link
+   */
+  const getMeetUrl = () => {
+    // Aggressively check for anything that looks like a URL in common fields
+    const candidates = [
+      appointment.meetLink,
+      appointment.meet_link,
+      appointment.google_meet_link,
+      appointment.joinLink,
+      appointment.meeting?.start_url,
+      appointment.meeting?.join_url,
+      appointment.meeting?.google_meet_link,
+      appointment.consultation?.meetLink,
+      appointment.consultation?.google_meet_link,
+      appointment.start_url,
+      appointment.join_url,
+      appointment.link
+    ];
+
+    // Return first non-null string that starts with http
+    for (const c of candidates) {
+      if (c && typeof c === 'string' && c.toLowerCase().startsWith('http')) {
+        return c;
+      }
+    }
+
+    return null;
   };
 
   /**
@@ -76,17 +121,23 @@ export default function VideoCallScreen({ route, navigation }) {
     setLoading(true);
 
     try {
-      // Check if the backend provided a Google Meet link first
-      const meetUrl = appointment.meetLink;
+      // Check if the backend provided a Google Meet link
+      const meetUrl = getMeetUrl();
 
       // If there's a Google Meet link, redirect to browser or Meet app
-      if (meetUrl && meetUrl.includes('meet.google.com')) {
+      if (meetUrl) {
         const supported = await Linking.canOpenURL(meetUrl);
         if (supported) {
           await Linking.openURL(meetUrl);
           setIsInMeeting(true); // Keep ui state friendly so they can return and leave
         } else {
-          Alert.alert('Error', `Don't know how to open this URL: ${meetUrl}`);
+          // If for some reason canOpenURL fails but it's clearly a URL, try it anyway
+          try {
+            await Linking.openURL(meetUrl);
+            setIsInMeeting(true);
+          } catch (e) {
+            Alert.alert('Error', `Could not open Google Meet: ${meetUrl}`);
+          }
         }
         return;
       }
@@ -102,7 +153,14 @@ export default function VideoCallScreen({ route, navigation }) {
       }
 
       if (!meetingNumber) {
-        throw new Error('Invalid meeting number or meeting link missing');
+        // One final fallback: try ANY url on the object
+        const anyUrl = getMeetUrl() || appointment.join_url || appointment.start_url;
+        if (anyUrl && typeof anyUrl === 'string' && anyUrl.startsWith('http')) {
+          await Linking.openURL(anyUrl);
+          setIsInMeeting(true);
+          return;
+        }
+        throw new Error('Meeting link or ID is not available for this session yet. Please contact your doctor or wait for them to start the session.');
       }
 
       const meetingData = {
@@ -139,6 +197,12 @@ export default function VideoCallScreen({ route, navigation }) {
    * Handle leaving the meeting without completing
    */
   const handleLeaveMeeting = async () => {
+    if (getMeetUrl()) {
+      setIsInMeeting(false);
+      navigation.goBack();
+      return;
+    }
+
     const result = await zoomService.leaveMeeting();
     // Only go back if not doing SOAP note polling
     if (result.success && !isGeneratingSoap) {
@@ -152,17 +216,21 @@ export default function VideoCallScreen({ route, navigation }) {
    */
   const handleCompleteConsultation = async () => {
     try {
-      if (appointment.meetLink) {
+      if (getMeetUrl()) {
         // for Google meet we just mark as complete directly
         setIsGeneratingSoap(true);
-        await consultationAPI.completeConsultation(appointment.id);
-        pollForSoapNote(appointment.id);
+        // Use meeting_id (Consultation ID) if available, fallback to appointment.id
+        const consultId = appointment.meeting_id || appointment.meeting?.id || appointment.id;
+        await consultationAPI.completeConsultation(consultId);
+        pollForSoapNote(consultId);
       } else {
+        // Fallback for Zoom
         const result = await zoomService.leaveMeeting();
         if (result.success) {
           setIsGeneratingSoap(true);
-          await consultationAPI.completeConsultation(appointment.id);
-          pollForSoapNote(appointment.id);
+          const consultId = appointment.meeting_id || appointment.meeting?.id || appointment.id;
+          await consultationAPI.completeConsultation(consultId);
+          pollForSoapNote(consultId);
         }
       }
     } catch (error) {
@@ -275,15 +343,15 @@ export default function VideoCallScreen({ route, navigation }) {
                   </>
                 )}
               </>
-            ) : appointment.meetLink ? (
+            ) : getMeetUrl() ? (
               <>
                 <Text style={styles.infoLabel}>Meeting Platform:</Text>
-                <Text style={styles.infoValue}>Google Meet</Text>
+                <Text style={styles.infoValue}>{getMeetUrl().toLowerCase().includes('meet.google.com') ? 'Google Meet' : 'Video Conference'}</Text>
                 <Text style={styles.infoLabel}>Link:</Text>
-                <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{appointment.meetLink}</Text>
+                <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">{getMeetUrl()}</Text>
               </>
             ) : (
-              <Text style={styles.infoLabel}>Meeting details unavailable</Text>
+              <Text style={styles.infoLabel}>Meeting details unavailable for this session.</Text>
             )}
           </View>
         </View>

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  SafeAreaView 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -17,13 +17,13 @@ export default function MicrophoneTestScreen({ navigation }) {
   // Navigation Handler
   const handleContinue = () => {
     // Navigate to the Dashboard
-    navigation.replace('PatientDashboard');
+    navigation.replace('Dashboard');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        
+
         {/* Header: Back Arrow + Progress Bar */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -42,7 +42,7 @@ export default function MicrophoneTestScreen({ navigation }) {
 
         {/* --- DYNAMIC CONTENT AREA --- */}
         <View style={styles.dynamicContent}>
-          
+
           {!isTesting ? (
             /* STATE 1: Big Microphone Icon */
             <View style={styles.micCircleOuter}>
@@ -54,26 +54,26 @@ export default function MicrophoneTestScreen({ navigation }) {
             </View>
           ) : (
             /* STATE 2: Text Box + Waveform */
-            <View style={{width: '100%', alignItems: 'center'}}>
-               {/* Text Box */}
-               <View style={styles.transcriptionBox}>
-                 <Text style={styles.transcriptionText}>
-                   Hello, this is an audio test for the Saramedico Audio Transcription Services, this text will be transcribed live...
-                 </Text>
-               </View>
+            <View style={{ width: '100%', alignItems: 'center' }}>
+              {/* Text Box */}
+              <View style={styles.transcriptionBox}>
+                <Text style={styles.transcriptionText}>
+                  Hello, this is an audio test for the Saramedico Audio Transcription Services, this text will be transcribed live...
+                </Text>
+              </View>
 
-               {/* Waveform Visualization (Mock) */}
-               <View style={styles.waveformContainer}>
-                  {[10, 25, 15, 30, 20, 35, 25, 10, 30, 15, 25, 10, 20, 35, 15, 25].map((h, i) => (
-                    <View 
-                      key={i} 
-                      style={[
-                        styles.waveBar, 
-                        { height: h, backgroundColor: COLORS.primary, opacity: 0.7 + (i%2)*0.3 }
-                      ]} 
-                    />
-                  ))}
-               </View>
+              {/* Waveform Visualization (Mock) */}
+              <View style={styles.waveformContainer}>
+                {[10, 25, 15, 30, 20, 35, 25, 10, 30, 15, 25, 10, 20, 35, 15, 25].map((h, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.waveBar,
+                      { height: h, backgroundColor: COLORS.primary, opacity: 0.7 + (i % 2) * 0.3 }
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
           )}
         </View>
@@ -82,32 +82,32 @@ export default function MicrophoneTestScreen({ navigation }) {
         <View style={styles.bottomSection}>
           <Text style={styles.label}>Choose Language</Text>
           <TouchableOpacity style={styles.dropdown}>
-             <Text style={styles.dropdownText}>English (USA)</Text>
-             <Ionicons name="chevron-down" size={20} color="#666" />
+            <Text style={styles.dropdownText}>English (USA)</Text>
+            <Ionicons name="chevron-down" size={20} color="#666" />
           </TouchableOpacity>
 
           {/* Action Button */}
-          <View style={{marginTop: 30}}>
-            <CustomButton 
+          <View style={{ marginTop: 30 }}>
+            <CustomButton
               // If testing, show "Finish"; otherwise "Start Test"
-              title={isTesting ? "Finish & Continue" : "Start Test"} 
+              title={isTesting ? "Finish & Continue" : "Start Test"}
               onPress={() => {
                 if (isTesting) {
                   handleContinue(); // Finish test -> Go to Dashboard
                 } else {
                   setIsTesting(true); // Start test -> Show Waveform
                 }
-              }} 
+              }}
             />
           </View>
 
           {/* Skip Link */}
           {!isTesting && (
-            <TouchableOpacity 
-              style={{marginTop: 20, alignSelf: 'center'}}
+            <TouchableOpacity
+              style={{ marginTop: 20, alignSelf: 'center' }}
               onPress={handleContinue} // Skip -> Go to Dashboard
             >
-              <Text style={{color: '#888'}}>Skip for now</Text>
+              <Text style={{ color: '#888' }}>Skip for now</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
 
   transcriptionBox: { width: '100%', height: 180, borderWidth: 1, borderColor: '#DDD', borderRadius: 15, padding: 20, backgroundColor: 'white' },
   transcriptionText: { fontSize: 16, color: '#B0B0B0', lineHeight: 24, fontWeight: '500' },
-  
+
   waveformContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, marginTop: 30 },
   waveBar: { width: 4, borderRadius: 2, marginHorizontal: 3 },
 

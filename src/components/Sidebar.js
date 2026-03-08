@@ -93,6 +93,11 @@ export default function PatientSidebar({ isVisible, onClose, navigation }) {
 
                      <Text style={styles.sectionHeader}>ACCOUNT</Text>
 
+                     <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('PatientNotificationsScreen')}>
+                        <Ionicons name="notifications-outline" size={20} color="#333" />
+                        <Text style={styles.menuText}>Notifications</Text>
+                     </TouchableOpacity>
+
                      <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('PatientSettingsScreen')}>
                         <Ionicons name="settings-outline" size={20} color="#333" />
                         <Text style={styles.menuText}>Settings</Text>

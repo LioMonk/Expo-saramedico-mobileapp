@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import SignOutModal from './SignOutModal';
 import { getUserData } from '../services/api';
+import { fixUserUrls } from '../services/urlFixer';
 
 export default function DoctorSidebar({ isVisible, onClose, navigation, onStartMeet }) {
   const [showSignOut, setShowSignOut] = useState(false);
@@ -31,14 +32,15 @@ export default function DoctorSidebar({ isVisible, onClose, navigation, onStartM
 
   const loadDoctorProfile = async () => {
     try {
-      const userData = await getUserData();
-      if (userData) {
+      const rawData = await getUserData();
+      if (rawData) {
+        const userData = fixUserUrls(rawData);
         // Remove any existing "Dr." prefix to avoid duplication
         const cleanName = userData.full_name ? userData.full_name.replace(/^Dr\.\s*/i, '') : 'Doctor';
         setDoctorData({
           name: cleanName,
           specialty: userData.specialty || 'General Practice',
-          avatar: userData.avatar_url || null
+          avatar: userData.avatar_url || userData.avatar || null
         });
       }
     } catch (error) {
@@ -57,9 +59,7 @@ export default function DoctorSidebar({ isVisible, onClose, navigation, onStartM
 
   const handleLiveConsult = () => {
     onClose();
-    if (onStartMeet) {
-      onStartMeet();
-    }
+    navigation.navigate('DoctorLiveConsultScreen');
   };
 
   const onSignOutClick = () => {
@@ -146,8 +146,16 @@ export default function DoctorSidebar({ isVisible, onClose, navigation, onStartM
                 style={styles.menuItem}
                 onPress={() => handleNavigation('DoctorPatientDirectoryScreen')}
               >
-                <Ionicons name="folder-outline" size={20} color="#333" />
+                <Ionicons name="people-outline" size={20} color="#333" />
                 <Text style={styles.menuText}>Patients</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => handleNavigation('DoctorUploadScreen')}
+              >
+                <Ionicons name="document-text-outline" size={20} color="#333" />
+                <Text style={styles.menuText}>Chart Review</Text>
               </TouchableOpacity>
             </View>
 

@@ -63,6 +63,7 @@ export default function HospitalDrawerNavigator() {
                 component={HospitalTabNavigator}
                 options={{
                     title: 'Dashboard',
+                    headerShown: false,
                     drawerIcon: ({ color }) => <Ionicons name="home-outline" size={22} color={color} />
                 }}
             />

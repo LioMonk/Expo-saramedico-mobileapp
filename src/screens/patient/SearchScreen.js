@@ -25,7 +25,7 @@ export default function SearchScreen({ navigation }) {
       setLoading(true);
       try {
          // Load all doctors without any query
-         const response = await patientAPI.searchDoctors({ query: '' });
+         const response = await patientAPI.searchDoctors();
          const doctorsList = response.data?.results || response.data || [];
          setAllDoctors(doctorsList);
          setFilteredDoctors(doctorsList);
@@ -128,13 +128,19 @@ export default function SearchScreen({ navigation }) {
                            {index > 0 && <View style={styles.divider} />}
                            <TouchableOpacity
                               style={styles.listItem}
-                              onPress={() => navigation.navigate('DoctorProfile', { doctorId: doctor.id })}
+                              onPress={() => navigation.navigate('AppointmentBooking', { doctor: doctor })}
                            >
                               <View style={[styles.avatarPlaceholder, { backgroundColor: '#E3F2FD' }]}>
                                  <Ionicons name="medical" size={24} color={COLORS.primary} />
                               </View>
                               <View style={styles.textContainer}>
-                                 <Text style={styles.itemTitle}>Dr. {doctor.full_name || doctor.name}</Text>
+                                 <Text style={styles.itemTitle}>
+                                    {(() => {
+                                       let name = doctor.full_name || doctor.name || 'Doctor';
+                                       if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown doctor') name = 'Doctor';
+                                       return name.startsWith('Dr. ') ? name : `Dr. ${name}`;
+                                    })()}
+                                 </Text>
                                  <Text style={styles.itemSubtitle}>{doctor.specialty || 'General Practice'}</Text>
                               </View>
                               <Ionicons name="chevron-forward" size={20} color="#999" />

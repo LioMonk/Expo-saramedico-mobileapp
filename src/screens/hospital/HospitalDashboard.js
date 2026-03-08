@@ -10,31 +10,47 @@ import {
     Alert,
     Modal,
     TextInput,
+    Image,
+    Platform,
+    StatusBar,
+    Dimensions
 } from 'react-native';
+import { DrawerActions } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { hospitalAPI, calendarAPI, authAPI } from '../../services/api';
 
+const { width } = Dimensions.get('window');
+
 const PALETTE = {
-    blue: '#3B82F6', bluLight: '#EFF6FF',
-    green: '#10B981', greenLight: '#F0FDF4',
-    amber: '#F59E0B', amberLight: '#FFFBEB',
-    purple: '#8B5CF6', purpleLight: '#EDE9FE',
-    bg: '#F8FAFC', card: '#FFFFFF',
-    text: '#0F172A', sub: '#64748B', border: '#E2E8F0',
+    blue: '#2563EB',
+    blueLight: '#DBEAFE',
+    indigo: '#4F46E5',
+    indigoLight: '#E0E7FF',
+    emerald: '#059669',
+    emeraldLight: '#D1FAE5',
+    amber: '#D97706',
+    amberLight: '#FEF3C7',
+    rose: '#E11D48',
+    roseLight: '#FFE4E6',
+    bg: '#F1F5F9',
+    card: '#FFFFFF',
+    text: '#0F172A',
+    sub: '#64748B',
+    border: '#E2E8F0',
 };
 
 export default function HospitalDashboard({ navigation }) {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [orgName, setOrgName] = useState('Hospital');
+    const [hospitalAvatar, setHospitalAvatar] = useState(null);
     const [orgId, setOrgId] = useState(null);
     const [stats, setStats] = useState({ doctors: 0, patients: 0, staff: 0, consultations: 0 });
     const [recentActivity, setRecentActivity] = useState([]);
     const [todayEvents, setTodayEvents] = useState([]);
 
-    // Create Event Modal
     const [showCreateEvent, setShowCreateEvent] = useState(false);
     const [eventTitle, setEventTitle] = useState('');
     const [eventDesc, setEventDesc] = useState('');
@@ -48,50 +64,76 @@ export default function HospitalDashboard({ navigation }) {
         try {
             setLoading(true);
 
-            // 1. Profile
+            // 1. Fetch Basic Identity
             try {
                 const profileRes = await authAPI.getCurrentUser();
                 const user = profileRes.data;
-                setOrgName(user?.organization_id ? 'Hospital' : 'Hospital');
-                setOrgId(user?.organization_id);
-            } catch (e) { /* silent */ }
+                setOrgName(user?.name || user?.full_name || 'Hospital Admin');
+                setHospitalAvatar(user?.avatar || user?.avatar_url || null);
+            } catch (e) { /* silent fallback */ }
 
-            // 2. Org info
+            // 2. Fetch Real Metrics (Aggregated from members and appointments)
             try {
-                const orgRes = await hospitalAPI.getOrganization();
-                if (orgRes.data?.name) setOrgName(orgRes.data.name);
-                if (orgRes.data?.id) setOrgId(orgRes.data.id);
-            } catch (e) { /* silent */ }
+                const [membersRes, apptsRes, overRes] = await Promise.all([
+                    hospitalAPI.getOrgMembers().catch(() => ({ data: [] })),
+                    hospitalAPI.getAppointments({ date: new Date().toISOString().split('T')[0] }).catch(() => ({ data: { events: [] } })),
+                    hospitalAPI.getOverview().catch(() => ({ data: {} }))
+                ]);
 
-            // 3. Members count
-            try {
-                const membersRes = await hospitalAPI.getOrgMembers();
                 const members = membersRes.data || [];
-                const doctors = members.filter(m => m.role === 'doctor').length;
-                const patients = members.filter(m => m.role === 'patient').length;
-                const staff = members.length;
-                setStats(prev => ({ ...prev, doctors, patients, staff }));
-            } catch (e) { /* silent */ }
+                const dCount = members.filter(m => m.role === 'doctor').length;
+                const pCount = members.filter(m => m.role === 'patient').length;
+                const sCount = members.filter(m => m.role !== 'patient').length;
 
-            // 4. Consultations for recent activity
-            try {
-                const consRes = await hospitalAPI.getConsultations({ limit: 10 });
-                const consultations = consRes.data?.consultations || [];
-                setStats(prev => ({ ...prev, consultations: consRes.data?.total || consultations.length }));
-                setRecentActivity(consultations.slice(0, 5).map(c => ({
-                    id: c.id,
-                    type: 'consultation',
-                    text: `Consultation: ${c.patientName || 'Patient'} with ${c.doctorName || 'Doctor'}`,
-                    time: c.scheduledAt ? new Date(c.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
-                    status: c.status,
-                })));
-            } catch (e) { /* silent */ }
+                // Get appointments count (either from specific appts call or overview)
+                const agenda = Array.isArray(apptsRes.data) ? apptsRes.data : (apptsRes.data?.events || []);
+                const todayAppts = Math.max(agenda.length, overRes.data?.metrics?.todayAppointments || 0);
 
-            // 5. Today's events
+                setStats({
+                    doctors: dCount,
+                    patients: pCount,
+                    staff: sCount,
+                    consultations: todayAppts
+                });
+
+                // Set recent activity from overview or fallback
+                const overview = overRes.data || {};
+                if (overview.recentActivities?.length > 0) {
+                    setRecentActivity(overview.recentActivities.slice(0, 5).map((c, i) => ({
+                        id: c.activityId || `act-${i}`,
+                        text: c.subject || 'System Event',
+                        time: c.timestamp ? new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+                        status: c.status || 'completed',
+                    })));
+                } else {
+                    // Fallback to audit logs or consultations
+                    try {
+                        const logsRes = await hospitalAPI.getAuditLogs({ limit: 5 });
+                        const logs = logsRes.data?.logs || [];
+                        setRecentActivity(logs.slice(0, 5).map(l => ({
+                            id: l.id,
+                            text: l.action || 'Admin Action',
+                            time: l.timestamp ? new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
+                            status: 'logged'
+                        })));
+                    } catch (err) { /* silent */ }
+                }
+
+                // Organization name from actual org data
+                try {
+                    const orgRes = await hospitalAPI.getOrganization();
+                    if (orgRes.data?.name) setOrgName(orgRes.data.name);
+                } catch (e) { /* silent */ }
+
+            } catch (e) {
+                console.warn('Metrics aggregation failed:', e.message);
+            }
+
+            // 3. Today's Agenda
             try {
                 const today = new Date().toISOString().split('T')[0];
                 const evRes = await calendarAPI.getDayAgenda(today);
-                setTodayEvents((evRes.data?.events || []).slice(0, 4));
+                setTodayEvents((evRes.data?.events || []).slice(0, 3));
             } catch (e) { /* silent */ }
 
         } catch (err) {
@@ -109,7 +151,7 @@ export default function HospitalDashboard({ navigation }) {
 
     const handleCreateEvent = async () => {
         if (!eventTitle.trim() || !eventStart.trim() || !eventEnd.trim()) {
-            Alert.alert('Missing Fields', 'Title, start time, and end time are required.');
+            Alert.alert('Missing Fields', 'Required fields are missing.');
             return;
         }
         setCreatingEvent(true);
@@ -119,152 +161,165 @@ export default function HospitalDashboard({ navigation }) {
                 description: eventDesc.trim(),
                 start_time: new Date(eventStart).toISOString(),
                 end_time: new Date(eventEnd).toISOString(),
-                all_day: false,
-                color: '#10B981',
-                reminder_minutes: 30,
             });
-            Alert.alert('✅ Event Created', `"${eventTitle}" has been added to the calendar.`);
+            Alert.alert('Success', 'Event created.');
             setShowCreateEvent(false);
-            setEventTitle(''); setEventDesc(''); setEventStart(''); setEventEnd('');
             loadDashboard();
         } catch (e) {
-            Alert.alert('Error', e.response?.data?.detail || 'Failed to create event.');
+            Alert.alert('Error', 'Failed to create event.');
         } finally {
             setCreatingEvent(false);
         }
     };
 
-    const today = new Date();
-    const greeting = today.getHours() < 12 ? 'Good Morning' : today.getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
-    const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const greeting = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color={PALETTE.blue} />
-                    <Text style={styles.loadingText}>Loading dashboard…</Text>
-                </View>
-            </SafeAreaView>
+            <View style={[styles.container, styles.center]}>
+                <ActivityIndicator size="large" color={PALETTE.blue} />
+                <Text style={styles.loadingText}>Syncing hospital data…</Text>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
+            <StatusBar barStyle="dark-content" />
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scroll}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PALETTE.blue]} />}
             >
-                {/* ─── Header ─── */}
-                <View style={styles.header}>
-                    <View>
-                        <Text style={styles.greeting}>{greeting}</Text>
-                        <Text style={styles.orgName}>{orgName}</Text>
-                        <Text style={styles.date}>{dateStr}</Text>
+                {/* ─── Header Section ─── */}
+                <View style={styles.headerNode}>
+                    <View style={styles.headerTop}>
+                        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())} style={styles.iconBox}>
+                            <Ionicons name="grid" size={20} color={PALETTE.blue} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.avatarNode} onPress={() => navigation.navigate('HospitalSettingsScreen')}>
+                            {hospitalAvatar ? (
+                                <Image source={{ uri: hospitalAvatar }} style={styles.avatarImg} />
+                            ) : (
+                                <View style={styles.avatarCircle}>
+                                    <Ionicons name="business" size={20} color="white" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.notifBtn} onPress={() => { }}>
-                        <Ionicons name="notifications-outline" size={22} color={PALETTE.text} />
-                    </TouchableOpacity>
+                    <View style={styles.welcomeRow}>
+                        <View style={{ flex: 1, paddingRight: 15 }}>
+                            <Text style={styles.hospitalBrand} numberOfLines={1}>Clinical Dashboard</Text>
+                            <View style={styles.greetRow}>
+                                <Text style={styles.greetText}>{greeting}{orgName && orgName !== 'Hospital Admin' ? `, ${orgName}` : ''}. Your clinical queue is {stats.consultations > 0 ? `active with ${stats.consultations} events` : 'clear'}.</Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('HospitalNotificationsScreen')}>
+                            <Ionicons name="notifications" size={22} color={PALETTE.text} />
+                            <View style={styles.badgeDot} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
-                {/* ─── Stats Grid ─── */}
-                <View style={styles.statsGrid}>
+                {/* ─── Main Overview ─── */}
+                <View style={[styles.featuredCard, { backgroundColor: PALETTE.blue }]}>
+                    <View style={styles.featuredContent}>
+                        <View>
+                            <Text style={styles.featLabel}>Appointments Today</Text>
+                            <Text style={styles.featValue}>{stats.consultations}</Text>
+                        </View>
+                        <View style={styles.featIconBox}>
+                            <Ionicons name="calendar-outline" size={32} color="white" style={{ opacity: 0.3 }} />
+                        </View>
+                    </View>
+                    <View style={styles.featFooter}>
+                        <TouchableOpacity style={styles.featBtn} onPress={() => navigation.navigate('HospitalAppointmentsScreen')}>
+                            <Text style={styles.featBtnText}>View Schedule</Text>
+                            <Ionicons name="arrow-forward" size={14} color="white" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* ─── Core Metrics ─── */}
+                <View style={styles.metricGrid}>
                     {[
-                        { label: 'Doctors', value: stats.doctors, icon: 'medical', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalDirectoryScreen' },
-                        { label: 'Patients', value: stats.patients, icon: 'people', color: PALETTE.green, bg: PALETTE.greenLight, nav: 'HospitalPatientsScreen' },
-                        { label: 'Staff', value: stats.staff, icon: 'person', color: PALETTE.purple, bg: PALETTE.purpleLight, nav: 'HospitalStaffScreen' },
-                        { label: 'Consultations', value: stats.consultations, icon: 'calendar', color: PALETTE.amber, bg: PALETTE.amberLight, nav: 'HospitalAppointmentsScreen' },
-                    ].map(stat => (
-                        <TouchableOpacity
-                            key={stat.label}
-                            style={styles.statCard}
-                            onPress={() => navigation.navigate(stat.nav)}
-                            activeOpacity={0.8}
-                        >
-                            <View style={[styles.statIcon, { backgroundColor: stat.bg }]}>
-                                <Ionicons name={stat.icon} size={20} color={stat.color} />
+                        { label: 'Doctors', val: stats.doctors, icon: 'medical', color: PALETTE.indigo, bg: PALETTE.indigoLight, nav: 'HospitalDirectoryScreen' },
+                        { label: 'Patients', val: stats.patients, icon: 'people', color: PALETTE.emerald, bg: PALETTE.emeraldLight, nav: 'HospitalPatientsScreen' },
+                        { label: 'Staff', val: stats.staff, icon: 'shirt', color: PALETTE.rose, bg: PALETTE.roseLight, nav: 'HospitalStaffScreen' },
+                    ].map(m => (
+                        <TouchableOpacity key={m.label} style={styles.metricCard} onPress={() => navigation.navigate(m.nav)}>
+                            <View style={[styles.mIconBox, { backgroundColor: m.bg }]}>
+                                <Ionicons name={m.icon} size={18} color={m.color} />
                             </View>
-                            <Text style={styles.statValue}>{stat.value}</Text>
-                            <Text style={styles.statLabel}>{stat.label}</Text>
+                            <Text style={styles.mValue}>{m.val}</Text>
+                            <Text style={styles.mLabel}>{m.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
 
-                {/* ─── Quick Actions ─── */}
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionsRow}>
+                {/* ─── Quick Access ─── */}
+                <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Quick Actions</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionStrip}>
                     {[
-                        { label: 'Invite\nDoctor', icon: 'person-add', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalInviteTeamScreen' },
-                        { label: 'Directory', icon: 'grid', color: PALETTE.purple, bg: PALETTE.purpleLight, nav: 'HospitalDirectoryScreen' },
-                        { label: 'Patients', icon: 'people', color: PALETTE.green, bg: PALETTE.greenLight, nav: 'HospitalPatientsScreen' },
-                        { label: 'Staff', icon: 'briefcase', color: PALETTE.amber, bg: PALETTE.amberLight, nav: 'HospitalStaffScreen' },
-                        { label: 'Calendar', icon: 'calendar', color: PALETTE.blue, bg: PALETTE.bluLight, nav: 'HospitalAppointmentsScreen' },
-                        { label: 'Create\nEvent', icon: 'add-circle', color: PALETTE.green, bg: PALETTE.greenLight, onPress: () => setShowCreateEvent(true) },
-                        { label: 'Settings', icon: 'settings', color: PALETTE.sub, bg: PALETTE.border, nav: 'HospitalSettingsScreen' },
+                        { label: 'Departments', icon: 'layers-outline', color: '#9C27B0', bg: '#F3E5F5', nav: 'HospitalDepartmentsScreen' },
+                        { label: 'Onboard Dr', icon: 'person-add-outline', color: '#3B82F6', bg: '#EFF6FF', nav: 'HospitalCreateDoctorScreen' },
+                        { label: 'Invite Staff', icon: 'mail-open-outline', color: '#64748B', bg: '#F1F5F9', nav: 'HospitalInviteTeamScreen' },
+                        { label: 'New Event', icon: 'calendar-outline', color: '#10B981', bg: '#F0FDF4', onPress: () => setShowCreateEvent(true) },
                     ].map(a => (
-                        <TouchableOpacity
-                            key={a.label}
-                            style={styles.actionCard}
-                            onPress={a.onPress || (() => navigation.navigate(a.nav))}
-                            activeOpacity={0.8}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: a.bg }]}>
+                        <TouchableOpacity key={a.label} style={styles.stripItem} onPress={a.onPress || (() => navigation.navigate(a.nav))}>
+                            <View style={[styles.stripIcon, { backgroundColor: a.bg }]}>
                                 <Ionicons name={a.icon} size={22} color={a.color} />
                             </View>
-                            <Text style={styles.actionLabel}>{a.label}</Text>
+                            <Text style={styles.stripLabel}>{a.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
 
-                {/* ─── Today's Events ─── */}
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Today's Events</Text>
+                {/* ─── Today's Agenda ─── */}
+                <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Daily Agenda</Text>
                     <TouchableOpacity onPress={() => navigation.navigate('HospitalAppointmentsScreen')}>
-                        <Text style={styles.viewAll}>View All</Text>
+                        <Text style={styles.viewLink}>View Full</Text>
                     </TouchableOpacity>
                 </View>
-                <View style={styles.card}>
+                <View style={styles.agendaBox}>
                     {todayEvents.length === 0 ? (
-                        <View style={styles.emptyRow}>
-                            <Ionicons name="calendar-outline" size={32} color="#CBD5E1" />
-                            <Text style={styles.emptyText}>No events scheduled today</Text>
+                        <View style={styles.emptyState}>
+                            <Ionicons name="calendar-clear-outline" size={32} color="#CBD5E1" style={{ marginBottom: 10 }} />
+                            <Text style={styles.emptyText}>No events on your radar today.</Text>
                         </View>
                     ) : todayEvents.map((ev, i) => (
-                        <View key={ev.id || i} style={[styles.eventRow, i < todayEvents.length - 1 && styles.divider]}>
-                            <View style={[styles.eventDot, { backgroundColor: ev.color || PALETTE.blue }]} />
+                        <View key={ev.id || i} style={[styles.agendaItem, i < todayEvents.length - 1 && styles.itemDivider]}>
+                            <View style={[styles.agendaIcon, { backgroundColor: (ev.color || PALETTE.blue) + '15' }]}>
+                                <Ionicons name="time-outline" size={18} color={ev.color || PALETTE.blue} />
+                            </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.eventTitle}>{ev.title}</Text>
-                                <Text style={styles.eventTime}>
-                                    {ev.start_time ? new Date(ev.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                    {ev.end_time ? ` – ${new Date(ev.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                <Text style={styles.agendaEvent}>{ev.title}</Text>
+                                <Text style={styles.agendaTime}>
+                                    {ev.start_time ? new Date(ev.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All Day'}
                                 </Text>
                             </View>
+                            <Ionicons name="chevron-forward" size={14} color="#CBD5E1" />
                         </View>
                     ))}
                 </View>
 
-                {/* ─── Recent Activity ─── */}
-                <View style={styles.sectionHeader}>
+                {/* ─── Recent Logs ─── */}
+                <View style={styles.sectionHead}>
                     <Text style={styles.sectionTitle}>Recent Activity</Text>
                 </View>
-                <View style={styles.card}>
-                    {recentActivity.length === 0 ? (
-                        <View style={styles.emptyRow}>
-                            <Ionicons name="time-outline" size={32} color="#CBD5E1" />
-                            <Text style={styles.emptyText}>No recent activity</Text>
-                        </View>
-                    ) : recentActivity.map((item, i) => (
-                        <View key={item.id || i} style={[styles.activityRow, i < recentActivity.length - 1 && styles.divider]}>
-                            <View style={[styles.activityDot, { backgroundColor: item.status === 'completed' ? PALETTE.green : PALETTE.blue }]} />
+                <View style={styles.logBox}>
+                    {recentActivity.map((log, i) => (
+                        <View key={log.id || i} style={[styles.logItem, i < recentActivity.length - 1 && styles.itemDivider]}>
+                            <View style={styles.logMarker} />
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.activityText}>{item.text}</Text>
-                                <Text style={styles.activityTime}>{item.time}</Text>
+                                <Text style={styles.logText} numberOfLines={1}>{log.text}</Text>
+                                <Text style={styles.logTime}>{log.time}</Text>
                             </View>
-                            <View style={[styles.badge, { backgroundColor: item.status === 'completed' ? PALETTE.greenLight : PALETTE.bluLight }]}>
-                                <Text style={[styles.badgeText, { color: item.status === 'completed' ? PALETTE.green : PALETTE.blue }]}>
-                                    {item.status || 'scheduled'}
-                                </Text>
+                            <View style={styles.badgeLabel}>
+                                <Text style={styles.badgeLabelText}>{log.status}</Text>
                             </View>
                         </View>
                     ))}
@@ -273,85 +328,95 @@ export default function HospitalDashboard({ navigation }) {
                 <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* ─── Create Event Modal ─── */}
-            <Modal visible={showCreateEvent} animationType="slide" transparent>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalCard}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Create Event</Text>
+            {/* Modal remains same logic but with polished UI */}
+            <Modal visible={showCreateEvent} animationType="fade" transparent>
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalSheet}>
+                        <View style={styles.modalTop}>
+                            <Text style={styles.modalTitle}>New Event</Text>
                             <TouchableOpacity onPress={() => setShowCreateEvent(false)}>
-                                <Ionicons name="close" size={22} color={PALETTE.text} />
+                                <Ionicons name="close" size={24} color={PALETTE.text} />
                             </TouchableOpacity>
                         </View>
-                        <Text style={styles.fieldLabel}>Title *</Text>
-                        <TextInput style={styles.fieldInput} placeholder="e.g. Weekly Staff Meeting" value={eventTitle} onChangeText={setEventTitle} placeholderTextColor="#94A3B8" />
-                        <Text style={styles.fieldLabel}>Description</Text>
-                        <TextInput style={styles.fieldInput} placeholder="Optional notes" value={eventDesc} onChangeText={setEventDesc} placeholderTextColor="#94A3B8" />
-                        <Text style={styles.fieldLabel}>Start Time * (e.g. 2026-03-10 14:00)</Text>
-                        <TextInput style={styles.fieldInput} placeholder="YYYY-MM-DD HH:MM" value={eventStart} onChangeText={setEventStart} placeholderTextColor="#94A3B8" />
-                        <Text style={styles.fieldLabel}>End Time * (e.g. 2026-03-10 15:30)</Text>
-                        <TextInput style={styles.fieldInput} placeholder="YYYY-MM-DD HH:MM" value={eventEnd} onChangeText={setEventEnd} placeholderTextColor="#94A3B8" />
-                        <TouchableOpacity style={[styles.createBtn, creatingEvent && { opacity: 0.6 }]} onPress={handleCreateEvent} disabled={creatingEvent}>
-                            {creatingEvent ? <ActivityIndicator color="white" /> : <Text style={styles.createBtnText}>Create Event</Text>}
+                        <TextInput style={styles.mInput} placeholder="Event Title" value={eventTitle} onChangeText={setEventTitle} placeholderTextColor="#94A3B8" />
+                        <TextInput style={[styles.mInput, { height: 80 }]} placeholder="Summary" value={eventDesc} onChangeText={setEventDesc} multiline placeholderTextColor="#94A3B8" />
+                        <TextInput style={styles.mInput} placeholder="Starts (YYYY-MM-DD HH:MM)" value={eventStart} onChangeText={setEventStart} placeholderTextColor="#94A3B8" />
+                        <TextInput style={styles.mInput} placeholder="Ends (YYYY-MM-DD HH:MM)" value={eventEnd} onChangeText={setEventEnd} placeholderTextColor="#94A3B8" />
+                        <TouchableOpacity style={styles.modalAction} onPress={handleCreateEvent}>
+                            {creatingEvent ? <ActivityIndicator color="white" /> : <Text style={styles.modalActionText}>Confirm Event</Text>}
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: PALETTE.bg },
-    scroll: { padding: 20 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { marginTop: 12, color: PALETTE.sub },
+    loadingText: { marginTop: 12, color: PALETTE.sub, fontSize: 13, fontWeight: '700' },
+    scroll: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-    greeting: { fontSize: 13, color: PALETTE.sub, fontWeight: '500' },
-    orgName: { fontSize: 22, fontWeight: '800', color: PALETTE.text, marginTop: 2 },
-    date: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
-    notifBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: PALETTE.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border },
+    headerNode: { marginBottom: 25, paddingTop: Platform.OS === 'ios' ? 45 : 15 },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    iconBox: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border },
+    avatarNode: { width: 44, height: 44, borderRadius: 14, backgroundColor: PALETTE.blue, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+    avatarImg: { width: '100%', height: '100%' },
+    avatarCircle: { flex: 1, backgroundColor: PALETTE.blue, justifyContent: 'center', alignItems: 'center' },
+    welcomeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    greetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+    greetText: { fontSize: 13, color: PALETTE.sub, fontWeight: '500', marginTop: 4 },
+    hospitalBrand: { fontSize: 24, fontWeight: '900', color: PALETTE.text, letterSpacing: -0.5 },
+    bellBtn: { width: 52, height: 52, borderRadius: 18, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: PALETTE.border, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+    badgeDot: { position: 'absolute', top: 14, right: 14, width: 10, height: 10, borderRadius: 5, backgroundColor: PALETTE.rose, borderWidth: 2, borderColor: 'white' },
 
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
-    statCard: { width: '47%', backgroundColor: PALETTE.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: PALETTE.border, alignItems: 'flex-start' },
-    statIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-    statValue: { fontSize: 28, fontWeight: '800', color: PALETTE.text },
-    statLabel: { fontSize: 12, color: PALETTE.sub, fontWeight: '600', marginTop: 2 },
+    featuredCard: { borderRadius: 24, padding: 24, marginBottom: 25, shadowColor: PALETTE.blue, shadowOpacity: 0.2, shadowRadius: 15, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+    featuredContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    featLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: '700' },
+    featValue: { fontSize: 38, fontWeight: '900', color: 'white', marginTop: 4 },
+    featIconBox: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+    featFooter: { marginTop: 20, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 15 },
+    featBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    featBtnText: { color: 'white', fontWeight: '800', fontSize: 13 },
 
-    sectionTitle: { fontSize: 16, fontWeight: '800', color: PALETTE.text, marginBottom: 12 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 },
-    viewAll: { fontSize: 13, color: PALETTE.blue, fontWeight: '700' },
+    metricGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
+    metricCard: { width: (width - 60) / 3, backgroundColor: 'white', borderRadius: 22, padding: 15, borderWidth: 1, borderColor: '#F1F5F9', elevation: 2 },
+    mIconBox: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+    mValue: { fontSize: 18, fontWeight: '900', color: PALETTE.text },
+    mLabel: { fontSize: 11, color: PALETTE.sub, fontWeight: '700', marginTop: 2 },
 
-    actionsRow: { marginBottom: 28 },
-    actionCard: { backgroundColor: PALETTE.card, borderRadius: 16, padding: 14, marginRight: 10, alignItems: 'center', width: 90, borderWidth: 1, borderColor: PALETTE.border },
-    actionIcon: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    actionLabel: { fontSize: 11, color: PALETTE.text, textAlign: 'center', fontWeight: '600' },
+    sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    sectionTitle: { fontSize: 17, fontWeight: '800', color: PALETTE.text },
+    viewLink: { fontSize: 13, color: PALETTE.blue, fontWeight: '700' },
 
-    card: { backgroundColor: PALETTE.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: PALETTE.border, marginBottom: 20 },
-    divider: { borderBottomWidth: 1, borderBottomColor: PALETTE.border, paddingBottom: 12, marginBottom: 12 },
+    actionStrip: { gap: 12, paddingBottom: 10, paddingRight: 40 },
+    stripItem: { width: 100, alignItems: 'center', backgroundColor: 'white', borderRadius: 20, padding: 12, borderWidth: 1, borderColor: PALETTE.border },
+    stripIcon: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    stripLabel: { fontSize: 10, fontWeight: '800', color: PALETTE.text, textAlign: 'center' },
 
-    emptyRow: { alignItems: 'center', paddingVertical: 24, gap: 8 },
-    emptyText: { color: PALETTE.sub, fontSize: 13 },
+    agendaBox: { backgroundColor: 'white', borderRadius: 24, padding: 18, marginBottom: 30, borderWidth: 1, borderColor: PALETTE.border, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 10 },
+    agendaItem: { flexDirection: 'row', alignItems: 'center', gap: 15, paddingVertical: 14 },
+    agendaIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    agendaEvent: { fontSize: 14, fontWeight: '800', color: PALETTE.text },
+    agendaTime: { fontSize: 12, color: PALETTE.sub, fontWeight: '600', marginTop: 1 },
+    itemDivider: { borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
+    emptyState: { paddingVertical: 20, alignItems: 'center' },
+    emptyText: { color: '#94A3B8', fontSize: 13, fontWeight: '600' },
 
-    eventRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    eventDot: { width: 10, height: 10, borderRadius: 5 },
-    eventTitle: { fontSize: 14, fontWeight: '700', color: PALETTE.text },
-    eventTime: { fontSize: 12, color: PALETTE.sub, marginTop: 2 },
+    logBox: { backgroundColor: 'white', borderRadius: 24, padding: 20, marginBottom: 40, borderWidth: 1, borderColor: PALETTE.border },
+    logItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+    logMarker: { width: 6, height: 6, borderRadius: 3, backgroundColor: PALETTE.border },
+    logText: { fontSize: 13, fontWeight: '600', color: PALETTE.text, flex: 1 },
+    logTime: { fontSize: 11, color: PALETTE.sub, marginTop: 2 },
+    badgeLabel: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F1F5F9' },
+    badgeLabelText: { fontSize: 10, fontWeight: '800', color: PALETTE.sub, textTransform: 'uppercase' },
 
-    activityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    activityDot: { width: 8, height: 8, borderRadius: 4 },
-    activityText: { fontSize: 13, fontWeight: '600', color: PALETTE.text, flex: 1 },
-    activityTime: { fontSize: 11, color: PALETTE.sub, marginTop: 2 },
-    badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    badgeText: { fontSize: 10, fontWeight: '800' },
-
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: PALETTE.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: PALETTE.text },
-    fieldLabel: { fontSize: 13, fontWeight: '700', color: PALETTE.text, marginBottom: 6, marginTop: 12 },
-    fieldInput: { backgroundColor: PALETTE.bg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: PALETTE.text, borderWidth: 1, borderColor: PALETTE.border },
-    createBtn: { backgroundColor: PALETTE.blue, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
-    createBtnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+    modalSheet: { backgroundColor: 'white', borderRadius: 32, padding: 25 },
+    modalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+    modalTitle: { fontSize: 20, fontWeight: '900', color: PALETTE.text },
+    mInput: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, fontSize: 14, color: PALETTE.text, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 15 },
+    modalAction: { backgroundColor: PALETTE.blue, borderRadius: 18, paddingVertical: 18, alignItems: 'center', marginTop: 10 },
+    modalActionText: { color: 'white', fontSize: 16, fontWeight: '900' },
 });

@@ -8,7 +8,7 @@ import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { calendarAPI, teamAPI, patientAPI } from '../../services/api';
+import { calendarAPI, teamAPI, patientAPI, hospitalAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 
 /**
@@ -267,10 +267,12 @@ export default function HospitalAppointmentsScreen({ navigation }) {
                                 </TouchableOpacity>
                             </View>
                         ) : (
-                            <View style={[styles.statusTag, { backgroundColor: accentColor + '15' }]}>
-                                <Text style={[styles.statusTagText, { color: accentColor }]}>
-                                    {(item.metadata?.appointment_status || 'SCHEDULED').toUpperCase()}
-                                </Text>
+                            <View style={styles.eventActions}>
+                                <View style={[styles.statusTag, { backgroundColor: accentColor + '15' }]}>
+                                    <Text style={[styles.statusTagText, { color: accentColor }]}>
+                                        {(item.metadata?.appointment_status || item.status || 'SCHEDULED').toUpperCase()}
+                                    </Text>
+                                </View>
                             </View>
                         )}
                     </View>
@@ -312,7 +314,7 @@ export default function HospitalAppointmentsScreen({ navigation }) {
                     <TouchableOpacity onPress={() => navigation.goBack()}>
                         <Ionicons name="arrow-back" size={24} color="#333" />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Calendar & Appointments</Text>
+                    <Text style={styles.headerTitle}>{viewMode === 'list' ? 'Master Appointment Schedule' : 'Schedule'}</Text>
                     <View style={styles.headerRight}>
                         <TouchableOpacity onPress={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} style={styles.headerIconBtn}>
                             <Ionicons name={viewMode === 'list' ? "calendar" : "list"} size={22} color={COLORS.primary} />
@@ -324,6 +326,13 @@ export default function HospitalAppointmentsScreen({ navigation }) {
                             <Ionicons name="add" size={24} color="white" />
                         </TouchableOpacity>
                     </View>
+                </View>
+                <View style={styles.headerSubtitleContainer}>
+                    <Text style={styles.headerSubtitleText}>
+                        {viewMode === 'list'
+                            ? 'Daily overview of all clinical encounters across departments.'
+                            : 'Manage shift coverage and personnel assignments.'}
+                    </Text>
                 </View>
 
                 {/* Date Filter Indicator */}
@@ -476,7 +485,9 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
     },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+    headerTitle: { fontSize: 17, fontWeight: '800', color: '#1E293B' },
+    headerSubtitleContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
+    headerSubtitleText: { fontSize: 13, color: '#64748B', fontWeight: '500' },
     headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     headerIconBtn: { padding: 4 },
     addBtn: {

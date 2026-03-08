@@ -40,13 +40,15 @@ export default function MedicalHistoryUploadScreen({ navigation }) {
                 copyToCacheDirectory: true,
             });
 
-            if (result.type === 'success') {
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+
                 // Validate file
                 const validation = FileUploadService.validateFile({
-                    uri: result.uri,
-                    name: result.name,
-                    size: result.size,
-                    type: result.mimeType,
+                    uri: asset.uri,
+                    name: asset.name,
+                    size: asset.size,
+                    type: asset.mimeType,
                 });
 
                 if (!validation.valid) {
@@ -55,10 +57,10 @@ export default function MedicalHistoryUploadScreen({ navigation }) {
                 }
 
                 setSelectedFile({
-                    uri: result.uri,
-                    name: result.name,
-                    size: result.size,
-                    type: result.mimeType,
+                    uri: asset.uri,
+                    name: asset.name,
+                    size: asset.size,
+                    type: asset.mimeType,
                 });
             }
         } catch (error) {

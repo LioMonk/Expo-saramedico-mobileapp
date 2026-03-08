@@ -28,6 +28,7 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
   const [showScheduleDropdown, setShowScheduleDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [micLevel, setMicLevel] = useState(10);
 
   const searchTimer = useRef(null);
 
@@ -56,6 +57,17 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, [patientSearch]);
+
+  // Simulate Mic Visualizer
+  useEffect(() => {
+    let interval;
+    if (captureMode === 'video' && visible) {
+      interval = setInterval(() => {
+        setMicLevel(Math.floor(Math.random() * 60) + 10);
+      }, 150);
+    }
+    return () => clearInterval(interval);
+  }, [captureMode, visible]);
 
   const searchPatients = async () => {
     if (!patientSearch.trim()) {
@@ -197,45 +209,47 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
 
               {/* Patient Selection */}
               <Text style={styles.label}>PATIENT</Text>
-              <View style={styles.patientRow}>
-                <View style={styles.searchBox}>
-                  <Ionicons name="search" size={18} color="#999" />
-                  <TextInput
-                    placeholder="Search patient name..."
-                    style={styles.input}
-                    value={patientSearch}
-                    onChangeText={setPatientSearch}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  {searchLoading && <ActivityIndicator size="small" color={COLORS.primary} />}
+              <View style={styles.patientSelectionContainer}>
+                <View style={styles.patientRow}>
+                  <View style={styles.searchBox}>
+                    <Ionicons name="search" size={18} color="#999" />
+                    <TextInput
+                      placeholder="Search patient name..."
+                      style={styles.input}
+                      value={patientSearch}
+                      onChangeText={setPatientSearch}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {searchLoading && <ActivityIndicator size="small" color={COLORS.primary} />}
+                  </View>
+                  <TouchableOpacity style={styles.addPatientBtn} onPress={handleAddPatient}>
+                    <Ionicons name="person-add" size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.addPatientBtn} onPress={handleAddPatient}>
-                  <Ionicons name="person-add" size={22} color={COLORS.primary} />
-                </TouchableOpacity>
-              </View>
 
-              {/* Patient Search Results */}
-              {showPatientList && (
-                <View style={styles.patientList}>
-                  {patients.map((p, index) => (
-                    <TouchableOpacity
-                      key={p.id || index}
-                      style={styles.patientItem}
-                      onPress={() => handlePatientSelect(p)}
-                    >
-                      <View style={styles.patientAvatar}>
-                        <Ionicons name="person" size={18} color="#666" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.patientName}>{p.full_name || p.name}</Text>
-                        <Text style={styles.patientMrn}>{p.mrn || 'No MRN'}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#CCC" />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+                {/* Patient Search Results */}
+                {showPatientList && (
+                  <View style={styles.patientList}>
+                    {patients.map((p, index) => (
+                      <TouchableOpacity
+                        key={p.id || index}
+                        style={styles.patientItem}
+                        onPress={() => handlePatientSelect(p)}
+                      >
+                        <View style={styles.patientAvatar}>
+                          <Ionicons name="person" size={18} color="#666" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.patientName}>{p.full_name || p.name}</Text>
+                          <Text style={styles.patientMrn}>{p.mrn || 'No MRN'}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color="#CCC" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
 
               {selectedPatient && (
                 <View style={styles.selectedPatientBadge}>
@@ -270,6 +284,27 @@ export default function DoctorNewMeetModal({ visible, onClose, navigation }) {
                   <Text style={styles.captureDesc}>Chat & take notes</Text>
                 </TouchableOpacity>
               </View>
+
+              {captureMode === 'video' && (
+                <View style={styles.micConfigContainer}>
+                  <Text style={styles.micLabel}>AUDIO CONFIGURATION</Text>
+                  <View style={styles.micRow}>
+                    <Ionicons name="mic-outline" size={20} color="#666" />
+                    <Text style={styles.micDeviceText}>System Default Microphone</Text>
+                    <View style={styles.visualizerContainer}>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.visualizerBar,
+                            { height: Math.max(4, micLevel * (Math.random() * 0.6 + 0.4) / 3.5) }
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                </View>
+              )}
 
               {/* Schedule Options */}
               <Text style={styles.label}>SCHEDULE</Text>
@@ -372,7 +407,23 @@ const styles = StyleSheet.create({
   input: { flex: 1, marginLeft: 8 },
   addPatientBtn: { width: 45, height: 45, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
 
-  patientList: { backgroundColor: 'white', borderRadius: 8, marginTop: 5, borderWidth: 1, borderColor: '#EEE' },
+  patientSelectionContainer: { zIndex: 1000 },
+  patientList: {
+    position: 'absolute',
+    top: 45,
+    left: 0,
+    right: 55,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 1001
+  },
   patientItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   patientAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   patientName: { fontSize: 14, fontWeight: '600', color: '#333' },
@@ -404,6 +455,13 @@ const styles = StyleSheet.create({
 
   infoNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, backgroundColor: '#E3F2FD', borderRadius: 8 },
   infoText: { fontSize: 12, color: COLORS.primary, flex: 1 },
+
+  micConfigContainer: { marginTop: 15, padding: 15, backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#EEE' },
+  micLabel: { fontSize: 11, fontWeight: 'bold', color: '#999', marginBottom: 10, letterSpacing: 0.5 },
+  micRow: { flexDirection: 'row', alignItems: 'center' },
+  micDeviceText: { flex: 1, fontSize: 14, color: '#333', marginLeft: 10, fontWeight: '500' },
+  visualizerContainer: { flexDirection: 'row', alignItems: 'center', height: 24, gap: 3, width: 40, justifyContent: 'center' },
+  visualizerBar: { width: 4, backgroundColor: COLORS.primary, borderRadius: 2 },
 
   closeCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#1A2A3A', justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginTop: 20 }
 });

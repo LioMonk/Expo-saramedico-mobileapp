@@ -9,6 +9,12 @@ import HospitalDirectoryScreen from '../screens/hospital/HospitalDirectoryScreen
 import HospitalPatientsScreen from '../screens/hospital/HospitalPatientsScreen';
 import HospitalStaffScreen from '../screens/hospital/HospitalStaffScreen';
 import HospitalAppointmentsScreen from '../screens/hospital/HospitalAppointmentsScreen';
+import HospitalNotificationsScreen from '../screens/hospital/HospitalNotificationsScreen';
+import HospitalDoctorsByDeptScreen from '../screens/hospital/HospitalDoctorsByDeptScreen';
+import HospitalCreateDoctorScreen from '../screens/hospital/HospitalCreateDoctorScreen';
+import HospitalEditDoctorScreen from '../screens/hospital/HospitalEditDoctorScreen';
+import HospitalMemberDetailScreen from '../screens/hospital/HospitalMemberDetailScreen';
+import HospitalPatientDetailScreen from '../screens/hospital/HospitalPatientDetailScreen';
 
 // Legacy screens kept for backward compatibility
 import HospitalDepartmentsScreen from '../screens/hospital/HospitalDepartmentsScreen';
@@ -40,6 +46,12 @@ export default function HospitalNavigator() {
       <Stack.Screen name="HospitalStaffScreen" component={HospitalStaffScreen} />
       <Stack.Screen name="HospitalAppointmentsScreen" component={HospitalAppointmentsScreen} />
       <Stack.Screen name="HospitalInviteTeamScreen" component={HospitalInviteTeamScreen} />
+      <Stack.Screen name="HospitalNotificationsScreen" component={HospitalNotificationsScreen} />
+      <Stack.Screen name="HospitalDoctorsByDeptScreen" component={HospitalDoctorsByDeptScreen} />
+      <Stack.Screen name="HospitalCreateDoctorScreen" component={HospitalCreateDoctorScreen} />
+      <Stack.Screen name="HospitalEditDoctorScreen" component={HospitalEditDoctorScreen} />
+      <Stack.Screen name="HospitalMemberDetailScreen" component={HospitalMemberDetailScreen} />
+      <Stack.Screen name="HospitalPatientDetailScreen" component={HospitalPatientDetailScreen} />
 
       {/* ─── Legacy Screens ─── */}
       <Stack.Screen name="HospitalDepartmentsScreen" component={HospitalDepartmentsScreen} />

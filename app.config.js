@@ -3,25 +3,29 @@ import 'dotenv/config';
 export default {
     expo: {
         name: "Sara Medico",
-        slug: "your-app",
+        slug: "sara-medico-mobile",
         version: "1.0.1",
         orientation: "portrait",
-        icon: "./assets/icon.png",
+        icon: "./assets/icon_new.png",
+        splash: {
+            resizeMode: "contain",
+            backgroundColor: "#ffffff"
+        },
         userInterfaceStyle: "light",
         android: {
             package: "com.saramedico.app",
             adaptiveIcon: {
-                foregroundImage: "./assets/icon.png",
+                foregroundImage: "./assets/icon_new.png",
                 backgroundColor: "#ffffff"
             }
         },
         extra: {
             eas: {
-                projectId: "eedea6cc-7eaa-4065-a88e-17bb3487b8ff"
+                projectId: "add88ac5-6bb0-426b-9def-915fac70a60c"
             },
-            // API Configuration - loaded from .env file
-            API_ENVIRONMENT: process.env.API_ENVIRONMENT || "aws",
-            AWS_API_URL: process.env.AWS_API_URL || "http://65.0.98.170:8000",
+            // API Configuration - strictly loaded from .env file or local defaults
+            API_ENVIRONMENT: process.env.API_ENVIRONMENT || "local",
+            AWS_API_URL: process.env.AWS_API_URL || "http://107.20.98.130:8000",
             LOCAL_API_HOST: process.env.LOCAL_API_HOST || "localhost",
             LOCAL_API_PORT: process.env.LOCAL_API_PORT || "8000"
         },

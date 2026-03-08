@@ -5,8 +5,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import { getUserData } from '../../services/api';
+import api, { doctorAPI, getUserData } from '../../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TOKEN_CONFIG } from '../../services/config';
 import { CustomButton } from '../../components/CustomComponents';
 
 export default function DoctorCredentialsScreen({ route, navigation }) {
@@ -39,17 +40,24 @@ export default function DoctorCredentialsScreen({ route, navigation }) {
         }
         setSaving(true);
         try {
-            // Mock backend save with AsyncStorage since there is no endpoint
+            // Update backend using dedicated endpoint - include specialty for verification
+            const userData = await getUserData();
+            await doctorAPI.updateProfile({
+                license_number: licenseNumber,
+                specialty: userData.specialty
+            });
+
+            // Update local storage for immediate UI reflected in settings
             const doctorProfile = await AsyncStorage.getItem('doctor_profile');
             const parsedProfile = doctorProfile ? JSON.parse(doctorProfile) : {};
             parsedProfile.license_number = licenseNumber;
             await AsyncStorage.setItem('doctor_profile', JSON.stringify(parsedProfile));
 
-            const userDataLocal = await AsyncStorage.getItem('@user_data');
+            const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
             if (userDataLocal) {
                 const parsedUser = JSON.parse(userDataLocal);
                 parsedUser.license_number = licenseNumber;
-                await AsyncStorage.setItem('@user_data', JSON.stringify(parsedUser));
+                await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUser));
             }
 
             Alert.alert('Success', 'Credentials updated successfully!', [
@@ -57,7 +65,9 @@ export default function DoctorCredentialsScreen({ route, navigation }) {
             ]);
         } catch (error) {
             console.error('Error saving credentials:', error);
-            Alert.alert('Error', 'Failed to update credentials.');
+            const detail = error.response?.data?.detail;
+            const message = typeof detail === 'string' ? detail : 'Failed to update credentials.';
+            Alert.alert('Error', message);
         } finally {
             setSaving(false);
         }

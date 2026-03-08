@@ -7,8 +7,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import { COLORS } from '../../constants/theme';
-import { doctorAPI, calendarAPI } from '../../services/api';
+import { doctorAPI, calendarAPI, consultationAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 
 /**
@@ -22,7 +23,8 @@ export default function DoctorScheduleScreen({ navigation, route }) {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const [activeTab, setActiveTab] = useState('upcoming'); // all, upcoming, pending, past
+    const [mainTab, setMainTab] = useState('appointments'); // appointments, tasks, events
+    const [subTab, setSubTab] = useState('all'); // today, upcoming, pending, past, completed, all
     const [selectedDate, setSelectedDate] = useState(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -50,7 +52,7 @@ export default function DoctorScheduleScreen({ navigation, route }) {
             const endDate = new Date();
             endDate.setFullYear(endDate.getFullYear() + 1);
 
-            const [appointmentsRes, eventsRes] = await Promise.all([
+            const [appointmentsRes, eventsRes, patientsRes] = await Promise.all([
                 doctorAPI.getAppointments().catch(() => ({ data: [] })),
                 calendarAPI.getEvents({
                     start_date: startDate.toISOString(),
@@ -58,10 +60,30 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                 }).catch((e) => {
                     console.error('calendar api error:', e);
                     return { data: [] };
-                })
+                }),
+                doctorAPI.getPatients().catch(() => ({ data: { all_patients: [] } }))
             ]);
 
-            setAllAppointments(appointmentsRes.data || []);
+            const patientsList = patientsRes.data?.all_patients || [];
+            const patientMap = {};
+            patientsList.forEach(p => {
+                if (p.id) patientMap[p.id] = p.name || p.full_name;
+            });
+
+            // Handle various backend response structures
+            const apptsData = appointmentsRes.data || appointmentsRes;
+            const appointmentsArray = Array.isArray(apptsData) ? apptsData :
+                (apptsData.appointments || apptsData.items || apptsData.data || []);
+
+            const enrichedAppointments = appointmentsArray.map(appt => {
+                const pId = appt.patient_id || appt.patientId;
+                if (pId && patientMap[pId]) {
+                    return { ...appt, patient_name: patientMap[pId] };
+                }
+                return appt;
+            });
+
+            setAllAppointments(enrichedAppointments);
             setCalendarEvents(eventsRes.data?.events || eventsRes.data || []);
         } catch (error) {
             console.error('Failed to load schedule:', error);
@@ -77,44 +99,72 @@ export default function DoctorScheduleScreen({ navigation, route }) {
 
     useEffect(() => {
         applyFilters();
-    }, [allAppointments, calendarEvents, activeTab, selectedDate]);
+    }, [allAppointments, calendarEvents, mainTab, subTab, selectedDate]);
 
     const applyFilters = () => {
         let items = [];
         const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
         // 1. Process Appointments
-        allAppointments.forEach(appt => {
-            const dateStr = appt.requested_date || appt.appointment_date || appt.scheduled_at;
-            if (!dateStr) return;
-            const apptDate = new Date(dateStr);
+        if (mainTab === 'appointments') {
+            allAppointments.forEach(appt => {
+                const dateStr = appt.requested_date || appt.appointment_date || appt.scheduled_at;
+                if (!dateStr) return;
+                const apptDate = new Date(dateStr);
 
-            if (activeTab === 'upcoming' && (appt.status !== 'accepted' || apptDate < now)) return;
-            if (activeTab === 'pending' && appt.status !== 'pending') return;
-            if (activeTab === 'past' && apptDate >= now) return;
+                if (subTab === 'today') {
+                    if (apptDate < startOfToday || apptDate > endOfToday) return;
+                } else if (subTab === 'upcoming') {
+                    if (appt.status !== 'accepted' || apptDate < now) return;
+                } else if (subTab === 'pending') {
+                    if (appt.status !== 'pending') return;
+                } else if (subTab === 'past' || subTab === 'completed') {
+                    if (apptDate >= now && appt.status !== 'completed') return;
+                }
 
-            if (selectedDate && (
-                apptDate.getFullYear() !== selectedDate.getFullYear() ||
-                apptDate.getMonth() !== selectedDate.getMonth() ||
-                apptDate.getDate() !== selectedDate.getDate()
-            )) return;
+                if (selectedDate && (
+                    apptDate.getFullYear() !== selectedDate.getFullYear() ||
+                    apptDate.getMonth() !== selectedDate.getMonth() ||
+                    apptDate.getDate() !== selectedDate.getDate()
+                )) return;
 
-            items.push({
-                ...appt,
-                itemType: 'appointment',
-                sortDate: apptDate
+                items.push({
+                    ...appt,
+                    itemType: 'appointment',
+                    sortDate: apptDate
+                });
             });
-        });
+        }
 
-        // 2. Process Calendar Events
-        if (activeTab !== 'pending') {
+        // 2. Process Calendar Events and Tasks
+        if (mainTab === 'tasks' || mainTab === 'events') {
             calendarEvents.forEach(evt => {
                 const dateStr = evt.start_time || evt.event_date || evt.scheduled_at;
                 if (!dateStr) return;
                 const evtDate = new Date(dateStr);
 
-                if (activeTab === 'upcoming' && evtDate < now) return;
-                if (activeTab === 'past' && evtDate >= now) return;
+                if (evt.event_type === 'appointment' || evt.appointment_id) return;
+
+                const isTask = evt.event_type === 'task';
+                if (mainTab === 'tasks' && !isTask) return;
+                if (mainTab === 'events' && isTask) return;
+
+                const isPendingTask = isTask && evt.status === 'pending';
+                const isCompletedTask = isTask && evt.status === 'completed';
+
+                if (subTab === 'today') {
+                    if (evtDate < startOfToday || evtDate > endOfToday) return;
+                } else if (subTab === 'upcoming') {
+                    if (evtDate < now && !isPendingTask) return;
+                } else if (subTab === 'past' || subTab === 'completed') {
+                    if (isTask && !isCompletedTask) return;
+                    if (!isTask && evtDate >= now) return;
+                } else if (subTab === 'pending') {
+                    if (isTask && !isPendingTask) return;
+                    if (!isTask) return; // events don't really have pending status
+                }
 
                 if (selectedDate && (
                     evtDate.getFullYear() !== selectedDate.getFullYear() ||
@@ -131,7 +181,7 @@ export default function DoctorScheduleScreen({ navigation, route }) {
         }
 
         items.sort((a, b) => {
-            return activeTab === 'past' ? b.sortDate - a.sortDate : a.sortDate - b.sortDate;
+            return (subTab === 'past' || subTab === 'completed') ? b.sortDate - a.sortDate : a.sortDate - b.sortDate;
         });
 
         setFilteredItems(items);
@@ -209,37 +259,125 @@ export default function DoctorScheduleScreen({ navigation, route }) {
         ]);
     };
 
-    const handleStartCall = (appointment) => {
-        if (appointment.start_url || appointment.meeting_id) {
-            // Navigate to in-app video call
-            navigation.navigate('VideoCallScreen', {
-                appointment: appointment,
-                role: 'doctor'
-            });
-        } else {
-            Alert.alert('No Meeting Link', 'This appointment does not have a Zoom link yet.');
+    const handleStartCall = async (appointment) => {
+        setLoading(true);
+        try {
+            // Check all possible keys for meeting links from both Appointment and Consultation models
+            let startUrl = appointment.start_url ||
+                appointment.meeting_id ||
+                appointment.meet_link ||
+                appointment.meetLink ||
+                appointment.join_url ||
+                appointment.google_meet_link ||
+                appointment.joinLink ||
+                appointment.meeting?.start_url ||
+                appointment.meeting?.join_url ||
+                appointment.meeting?.google_meet_link ||
+                appointment.consultation?.meetLink ||
+                appointment.consultation?.google_meet_link;
+
+            // Fallback: If accepted but no link found, try to fetch or create the consultation
+            if (!startUrl && appointment.status === 'accepted') {
+                try {
+                    console.log('🔍 [StartCall] Link missing for accepted appointment, searching consultation...', appointment.patient_id);
+                    const consultRes = await doctorAPI.getConsultationByPatient(appointment.patient_id);
+                    const consultation = consultRes.data || consultRes;
+
+                    if (consultation && (consultation.meetLink || consultation.meet_link || consultation.id)) {
+                        console.log('✅ [StartCall] Found existing consultation link:', consultation.meetLink || consultation.meet_link);
+                        // Enrich appointment object with consultation data for VideoCallScreen
+                        appointment.consultation = consultation;
+                        appointment.meeting_id = consultation.id;
+                        startUrl = consultation.meetLink || consultation.meet_link || consultation.id;
+                    } else {
+                        throw new Error('No valid consultation found');
+                    }
+                } catch (e) {
+                    console.log('✨ [StartCall] No existing consultation found, creating new one for patient:', appointment.patient_id);
+                    try {
+                        // Set scheduledAt to 5 minutes in the future to pass backend validation
+                        const futureDate = new Date();
+                        futureDate.setMinutes(futureDate.getMinutes() + 5);
+
+                        const newConsultRes = await consultationAPI.createConsultation({
+                            patientId: appointment.patient_id,
+                            scheduledAt: futureDate.toISOString(),
+                            durationMinutes: 30,
+                            notes: appointment.reason || 'Consultation from schedule'
+                        });
+                        const newConsultation = newConsultRes.data || newConsultRes;
+                        if (newConsultation && (newConsultation.meetLink || newConsultation.meet_link || newConsultation.id)) {
+                            console.log('✅ [StartCall] Created new consultation:', newConsultation.meetLink || newConsultation.meet_link);
+                            appointment.consultation = newConsultation;
+                            appointment.meeting_id = newConsultation.id;
+                            startUrl = newConsultation.meetLink || newConsultation.meet_link || newConsultation.id;
+                        }
+                    } catch (createErr) {
+                        console.error('❌ [StartCall] Failed to create consultation:', createErr.message);
+                    }
+                }
+            }
+
+            if (startUrl) {
+                // Navigate to in-app video call (which handles Google Meet redirect)
+                navigation.navigate('VideoCallScreen', {
+                    appointment: appointment,
+                    role: 'doctor'
+                });
+            } else {
+                Alert.alert(
+                    'No Meeting Link',
+                    'This appointment does not have a meeting link generated yet. If you just approved it, please wait a moment or try refreshing.',
+                    [{ text: 'Refresh', onPress: () => loadAppointments() }, { text: 'OK' }]
+                );
+            }
+        } catch (error) {
+            console.error('Error starting call:', error);
+            Alert.alert('Error', 'Failed to prepare the video call.');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleApprove = async (appointmentId) => {
+    const handleApprove = async (appointment) => {
+        const id = appointment.id;
+        const requestedDate = appointment.requested_date || appointment.appointment_date || appointment.scheduled_at || new Date().toISOString();
+
         Alert.alert(
             'Approve Appointment',
-            'Set appointment time and add notes (optional)',
+            `Confirm appointment for ${new Date(requestedDate).toLocaleString()}?`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Approve',
+                    text: 'Confirm',
                     onPress: async () => {
                         try {
-                            await doctorAPI.approveAppointment(appointmentId, {
-                                appointment_time: new Date().toISOString(),
-                                doctor_notes: null,
+                            const response = await doctorAPI.approveAppointment(id, {
+                                appointment_time: requestedDate,
+                                doctor_notes: "Approved via mobile app",
                             });
-                            Alert.alert('Success', 'Appointment approved! Zoom link generated.');
+
+                            const updatedAppt = response.data || response;
+
+                            Alert.alert(
+                                'Success',
+                                'Appointment approved! Meeting link generated.',
+                                [
+                                    {
+                                        text: 'Start Now',
+                                        onPress: () => handleStartCall(updatedAppt),
+                                        style: 'default'
+                                    },
+                                    {
+                                        text: 'View Schedule',
+                                        onPress: () => loadAppointments()
+                                    }
+                                ]
+                            );
                             loadAppointments();
                         } catch (error) {
                             const errorInfo = ErrorHandler.handleError(error);
-                            Alert.alert('Error', errorInfo.message);
+                            Alert.alert('Approval Failed', errorInfo.message);
                         }
                     },
                 },
@@ -272,15 +410,51 @@ export default function DoctorScheduleScreen({ navigation, route }) {
     };
 
     const renderItem = (item) => {
-        const isEvent = item.itemType === 'calendar_event';
-        const accentColor = isEvent ? '#9C27B0' : COLORS.primary;
-        const tagLabel = isEvent ? 'EVENT' : 'APPOINTMENT';
+        const isAppointment = item.itemType === 'appointment' || item.event_type === 'appointment';
+        const isTask = item.event_type === 'task';
+        const isCustomEvent = !isAppointment && !isTask;
+
+        let accentColor = COLORS.primary;
+        let tagLabel = 'APPOINTMENT';
+        let iconName = 'medical';
+
+        if (isTask) {
+            accentColor = item.color || '#F59E0B';
+            tagLabel = 'TASK';
+            iconName = 'checkmark-circle';
+        } else if (isCustomEvent) {
+            accentColor = '#9C27B0';
+            tagLabel = 'EVENT';
+            iconName = 'star';
+        }
 
         const displayTime = new Date(item.sortDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const displayDate = new Date(item.sortDate).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
 
-        const title = isEvent ? item.title : `Patient: ${item.patient_name || 'Unknown'}`;
-        const description = isEvent ? item.description : item.reason;
+        let displayTitle = item.title || 'Untitled';
+        if (isAppointment) {
+            const name = item.patient_name || item.appointment?.patient_name || 'Unknown';
+            displayTitle = `Patient: ${name}`;
+        }
+
+        if (isTask && displayTitle.startsWith('Task: ')) {
+            displayTitle = displayTitle.replace('Task: ', '');
+        }
+
+        const description = isAppointment ? item.reason : item.description;
+        const hasMeetingLink = isAppointment && (
+            item.status === 'accepted' ||
+            item.start_url ||
+            item.meeting_id ||
+            item.meet_link ||
+            item.meetLink ||
+            item.join_url ||
+            item.google_meet_link ||
+            item.joinLink ||
+            item.meeting?.start_url ||
+            item.meeting?.join_url ||
+            item.consultation?.meetLink
+        );
 
         return (
             <View key={`${item.itemType}-${item.id}`} style={styles.sexyEventCard}>
@@ -289,20 +463,21 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                     <View style={styles.sexyCardHeader}>
                         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                             <View style={[styles.sexyTimeBox, { backgroundColor: accentColor + '10' }]}>
-                                <Ionicons name="calendar" size={12} color={accentColor} />
+                                <Ionicons name="calendar-outline" size={12} color={accentColor} />
                                 <Text style={[styles.sexyTimeText, { color: accentColor }]}>{displayDate}</Text>
                             </View>
                             <View style={[styles.sexyTimeBox, { backgroundColor: accentColor + '10' }]}>
-                                <Ionicons name="time" size={12} color={accentColor} />
+                                <Ionicons name="time-outline" size={12} color={accentColor} />
                                 <Text style={[styles.sexyTimeText, { color: accentColor }]}>{displayTime}</Text>
                             </View>
                         </View>
                         <View style={[styles.sexyBadge, { backgroundColor: accentColor + '15' }]}>
+                            <Ionicons name={iconName} size={10} color={accentColor} style={{ marginRight: 4 }} />
                             <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{tagLabel}</Text>
                         </View>
                     </View>
 
-                    <Text style={styles.sexyTitle}>{title || 'Untitled'}</Text>
+                    <Text style={styles.sexyTitle}>{displayTitle}</Text>
 
                     {description ? (
                         <Text style={styles.sexyDesc} numberOfLines={2}>{description}</Text>
@@ -311,7 +486,7 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                     )}
 
                     <View style={styles.sexyFooter}>
-                        {isEvent ? (
+                        {!isAppointment ? (
                             <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
                                 <TouchableOpacity style={[styles.sexyEditBtn, { backgroundColor: accentColor }]} onPress={() => {
                                     setEventForm({
@@ -333,33 +508,35 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                         ) : (
                             <View style={{ flexDirection: 'row', gap: 10, flex: 1, alignItems: 'center' }}>
                                 {item.status === 'pending' ? (
-                                    <>
+                                    <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
                                         <TouchableOpacity
                                             style={[styles.sexyEditBtn, { backgroundColor: '#4CAF50', flex: 1 }]}
-                                            onPress={() => handleApprove(item.id)}
+                                            onPress={() => handleApprove(item)}
                                         >
-                                            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
-                                            <Text style={styles.sexyActionText}>Approve</Text>
+                                            <Ionicons name="checkmark-sharp" size={18} color="white" />
+                                            <Text style={styles.sexyActionText}>Accept</Text>
                                         </TouchableOpacity>
                                         <TouchableOpacity
                                             style={[styles.sexyEditBtn, { backgroundColor: '#F44336', flex: 1 }]}
                                             onPress={() => handleDecline(item.id)}
                                         >
-                                            <Ionicons name="close-circle-outline" size={18} color="white" />
-                                            <Text style={styles.sexyActionText}>Decline</Text>
+                                            <Ionicons name="close-sharp" size={18} color="white" />
+                                            <Text style={styles.sexyActionText}>Deny</Text>
                                         </TouchableOpacity>
-                                    </>
-                                ) : item.status === 'accepted' && item.start_url ? (
+                                    </View>
+                                ) : item.status === 'accepted' ? (
                                     <TouchableOpacity
-                                        style={[styles.sexyEditBtn, { backgroundColor: COLORS.primary, flex: 1 }]}
+                                        style={[styles.sexyEditBtn, { backgroundColor: hasMeetingLink ? '#3B82F6' : '#94A3B8', flex: 1 }]}
                                         onPress={() => handleStartCall(item)}
                                     >
-                                        <Ionicons name="videocam-outline" size={18} color="white" />
-                                        <Text style={styles.sexyActionText}>Join Video Call</Text>
+                                        <Ionicons name={(hasMeetingLink || item.status === 'accepted') ? "videocam" : "videocam-off-outline"} size={18} color="white" />
+                                        <Text style={styles.sexyActionText}>
+                                            {(hasMeetingLink || item.status === 'accepted') ? 'Start Meeting' : 'Link Pending...'}
+                                        </Text>
                                     </TouchableOpacity>
                                 ) : (
                                     <View style={[styles.sexyBadge, { backgroundColor: getStatusStyle(item.status).backgroundColor, flex: 1, paddingVertical: 8 }]}>
-                                        <Text style={[styles.sexyBadgeText, { textAlign: 'center' }]}>STATUS: {item.status.toUpperCase()}</Text>
+                                        <Text style={[styles.sexyBadgeText, { textAlign: 'center', fontWeight: 'bold' }]}>STATUS: {item.status.toUpperCase()}</Text>
                                     </View>
                                 )}
                             </View>
@@ -443,53 +620,93 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                 )}
 
                 {/* Tabs */}
-                <View style={styles.tabsContainer}>
+                <View style={[styles.tabsContainer, { marginBottom: 10 }]}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScroll}>
-                        {['upcoming', 'pending', 'past', 'all'].map(tab => (
+                        {['appointments', 'tasks', 'events'].map(tab => (
                             <TouchableOpacity
                                 key={tab}
-                                style={[styles.tab, activeTab === tab && styles.activeTab]}
-                                onPress={() => setActiveTab(tab)}
+                                style={[styles.tab, mainTab === tab && styles.activeTab]}
+                                onPress={() => { setMainTab(tab); setSubTab('all'); }}
                             >
-                                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                                <Text style={[styles.tabText, mainTab === tab && styles.activeTabText]}>
                                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                                 </Text>
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
                 </View>
+                <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
+                    <View style={styles.pickerContainer}>
+                        <Picker
+                            selectedValue={subTab}
+                            style={styles.picker}
+                            onValueChange={(itemValue) => setSubTab(itemValue)}
+                            mode="dropdown"
+                        >
+                            {(mainTab === 'appointments' ? ['all', 'upcoming', 'today', 'pending', 'past'] : ['all', 'today', 'upcoming', 'completed']).map(tab => (
+                                <Picker.Item
+                                    key={tab}
+                                    label={tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                    value={tab}
+                                    color={subTab === tab ? COLORS.primary : '#333'}
+                                />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
 
                 {viewMode === 'calendar' ? (
                     <View style={{ flex: 1 }}>
-                        <View style={{ backgroundColor: 'white', borderRadius: 12, padding: 8, marginBottom: 15 }}>
+                        <View style={{ backgroundColor: 'white', borderRadius: 12, padding: 4, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
                             <Calendar
                                 onDayPress={(day) => {
                                     setSelectedDate(new Date(day.timestamp));
-                                    // Removed setViewMode('list') so the calendar stays open
                                 }}
-                                markedDates={{
-                                    ...Object.fromEntries(
-                                        allAppointments.concat(calendarEvents).map(e => {
-                                            const d = new Date(e.requested_date || e.appointment_date || e.scheduled_at || e.start_time || e.event_date);
-                                            if (isNaN(d.getTime())) return [];
-                                            const dateK = d.toISOString().split('T')[0];
-                                            return [dateK, {
-                                                selected: true,
-                                                selectedColor: COLORS.primary + '20',
-                                                selectedTextColor: COLORS.primary,
-                                                marked: true,
-                                                dotColor: COLORS.primary
-                                            }];
-                                        }).filter(x => x.length > 0)
-                                    ),
-                                    ...(selectedDate ? {
-                                        [selectedDate.toISOString().split('T')[0]]: {
-                                            selected: true,
-                                            selectedColor: COLORS.primary,
-                                            selectedTextColor: 'white'
+                                markingType="multi-dot"
+                                markedDates={(function () {
+                                    const marks = {};
+                                    // Process Appointments (Blue)
+                                    allAppointments.forEach(appt => {
+                                        const dateStr = appt.requested_date || appt.appointment_date || appt.scheduled_at;
+                                        if (dateStr) {
+                                            const d = new Date(dateStr);
+                                            if (!isNaN(d.getTime())) {
+                                                const k = d.toISOString().split('T')[0];
+                                                if (!marks[k]) marks[k] = { dots: [] };
+                                                if (!marks[k].dots.find(dot => dot.key === 'appt')) {
+                                                    marks[k].dots.push({ key: 'appt', color: COLORS.primary, selectedDotColor: 'white' });
+                                                }
+                                            }
                                         }
-                                    } : {}),
-                                }}
+                                    });
+                                    // Process Events (Purple) & Tasks (Orange)
+                                    calendarEvents.forEach(evt => {
+                                        const dateStr = evt.start_time || evt.event_date || evt.scheduled_at;
+                                        if (dateStr) {
+                                            const d = new Date(dateStr);
+                                            if (!isNaN(d.getTime())) {
+                                                const k = d.toISOString().split('T')[0];
+                                                if (!marks[k]) marks[k] = { dots: [] };
+                                                const isTask = evt.event_type === 'task';
+                                                const dotKey = isTask ? 'task' : 'event';
+                                                const dotColor = isTask ? '#F59E0B' : '#9C27B0';
+                                                if (!marks[k].dots.find(dot => dot.key === dotKey)) {
+                                                    marks[k].dots.push({ key: dotKey, color: dotColor, selectedDotColor: 'white' });
+                                                }
+                                            }
+                                        }
+                                    });
+                                    // Apply background highlight to all marked days
+                                    Object.keys(marks).forEach(k => {
+                                        marks[k] = { ...marks[k], selected: true, selectedColor: COLORS.primary + '15', selectedTextColor: COLORS.primary };
+                                    });
+                                    // Overwrite selection for the specifically selected date
+                                    if (selectedDate) {
+                                        const sk = selectedDate.toISOString().split('T')[0];
+                                        marks[sk] = { ...marks[sk], selected: true, selectedColor: COLORS.primary, selectedTextColor: 'white' };
+                                    }
+                                    return marks;
+                                })()}
                                 theme={{
                                     selectedDayBackgroundColor: COLORS.primary,
                                     selectedDayTextColor: '#ffffff',
@@ -499,6 +716,28 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                                     textDayFontWeight: '500',
                                     textMonthFontWeight: 'bold',
                                     textDayHeaderFontWeight: '600',
+                                    textDayFontSize: 13,
+                                    textMonthFontSize: 15,
+                                    textDayHeaderFontSize: 11,
+                                    'stylesheet.calendar.main': {
+                                        container: {
+                                            paddingLeft: 0,
+                                            paddingRight: 0
+                                        },
+                                        monthView: {
+                                            marginVertical: 0
+                                        }
+                                    },
+                                    'stylesheet.calendar.header': {
+                                        header: {
+                                            flexDirection: 'row',
+                                            justifyContent: 'space-between',
+                                            paddingLeft: 10,
+                                            paddingRight: 10,
+                                            marginTop: 2,
+                                            alignItems: 'center'
+                                        }
+                                    }
                                 }}
                             />
                         </View>
@@ -691,6 +930,20 @@ const styles = StyleSheet.create({
     activeTab: { backgroundColor: COLORS.primary },
     tabText: { color: '#666', fontWeight: '600', fontSize: 13 },
     activeTabText: { color: 'white' },
+    pickerContainer: {
+        backgroundColor: '#F5F7F9',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        overflow: 'hidden',
+        height: 50, // increased height to prevent cutting
+        justifyContent: 'center'
+    },
+    picker: {
+        height: 50, // increased height to prevent cutting
+        width: '100%',
+        color: '#333'
+    },
     appointmentCard: {
         backgroundColor: 'white',
         borderRadius: 12,
@@ -856,6 +1109,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     sexyBadgeText: {
         fontSize: 10,

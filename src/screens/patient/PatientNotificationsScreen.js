@@ -29,9 +29,10 @@ export default function PatientNotificationsScreen({ navigation }) {
         try {
             if (showLoading) setLoading(true);
 
-            // 1. Fetch real notifications from the restricted endpoint
-            const response = await notificationAPI.getNotifications({ is_read: false, limit: 50 });
-            const backendNotifs = response.data?.notifications || [];
+            // 1. Fetch real notifications (both read and unread for history)
+            const response = await notificationAPI.getNotifications({ limit: 50 });
+            // Backend returns a flat array of NotificationResponse objects
+            const backendNotifs = Array.isArray(response.data) ? response.data : (response.data?.notifications || []);
 
             // 2. Fetch pending AI permissions (Synthetic Source 1)
             const pendingPermissionsRes = await permissionsAPI.getPendingRequests().catch(() => ({ data: [] }));

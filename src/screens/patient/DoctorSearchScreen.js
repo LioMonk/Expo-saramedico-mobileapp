@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { patientAPI } from '../../services/api';
 import { COLORS } from '../../constants/theme';
-import BottomNavBar from '../../components/BottomNavBar';
 
 /**
  * Doctor Search Screen
@@ -35,7 +34,8 @@ export default function DoctorSearchScreen({ navigation }) {
     const loadAllDoctors = async () => {
         setLoading(true);
         try {
-            const response = await patientAPI.searchDoctors({ query: '' });
+            // Load all doctors without any query
+            const response = await patientAPI.searchDoctors();
             const doctorsList = response.data?.results || response.data || [];
             setAllDoctors(doctorsList);
             setFilteredDoctors(doctorsList);
@@ -93,7 +93,13 @@ export default function DoctorSearchScreen({ navigation }) {
                 </Text>
             </View>
             <View style={styles.doctorInfo}>
-                <Text style={styles.doctorName}>{item.name || item.full_name}</Text>
+                <Text style={styles.doctorName}>
+                    {(() => {
+                        let dName = item.name || item.full_name || 'Doctor';
+                        if (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor') dName = 'Doctor';
+                        return dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
+                    })()}
+                </Text>
                 <Text style={styles.doctorSpecialty}>{item.specialty || 'General Practice'}</Text>
                 <View style={styles.statusBadge}>
                     <Text style={styles.statusText}>Available</Text>
@@ -162,7 +168,7 @@ export default function DoctorSearchScreen({ navigation }) {
                 )}
             </View>
 
-            <BottomNavBar navigation={navigation} activeTab="Search" />
+
         </SafeAreaView>
     );
 }

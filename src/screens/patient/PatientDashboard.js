@@ -6,83 +6,164 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   RefreshControl,
   Dimensions,
+  Image,
   Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
-import BottomNavBar from '../../components/BottomNavBar';
-import Sidebar from '../../components/Sidebar';
+import { SvgUri } from 'react-native-svg';
 import { patientAPI, authAPI, notificationAPI } from '../../services/api';
+import moment from 'moment';
 
 const { width } = Dimensions.get('window');
 
 export default function PatientDashboard({ navigation }) {
-  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [patientName, setPatientName] = useState('');
+  const [patientAvatar, setPatientAvatar] = useState(null);
   const [nextAppointment, setNextAppointment] = useState(null);
   const [recentVisits, setRecentVisits] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [vitals, setVitals] = useState({});
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+
+    // Refresh data when screen comes into focus (e.g., returning from Profile)
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadDashboardData();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadDashboardData = async (isRefreshing = false) => {
     try {
       if (!isRefreshing) setLoading(true);
 
-      // Fetch patient profile
-      const profileRes = await authAPI.getCurrentUser().catch(() => ({ data: { full_name: 'Patient' } }));
-      const fullName = profileRes.data?.name || profileRes.data?.full_name || 'Patient';
-      setPatientName(fullName);
+      const [profileRes, aptRes, doctorsRes] = await Promise.all([
+        authAPI.getCurrentUser().catch(() => ({ data: { full_name: 'Patient' } })),
+        patientAPI.getMyAppointments().catch(() => ({ data: [] })),
+        patientAPI.getDoctors().catch(() => ({ data: { results: [] } }))
+      ]);
 
-      // Fetch next appointment
-      try {
-        const appointmentsRes = await patientAPI.getMyAppointments();
-        const appointments = appointmentsRes.data || [];
-        const now = new Date();
-
-        // Include today's appointments that are upcoming or recently passed (within 2 hours)
-        const upcoming = appointments
-          .map(apt => ({
-            ...apt,
-            sortDate: new Date(apt.appointment_date || apt.requested_date || apt.scheduled_at)
-          }))
-          .filter(apt => {
-            if (isNaN(apt.sortDate.getTime())) return false;
-            // Show if it's in the future or started in the last 2 hours
-            const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-            return apt.sortDate >= twoHoursAgo && (apt.status === 'accepted' || apt.status === 'pending');
-          })
-          .sort((a, b) => a.sortDate - b.sortDate);
-
-        setNextAppointment(upcoming.length > 0 ? upcoming[0] : null);
-      } catch (err) {
-        setNextAppointment(null);
+      const doctorsList = doctorsRes.data?.results || doctorsRes.data || [];
+      const doctorsMap = {};
+      if (Array.isArray(doctorsList)) {
+        doctorsList.forEach(d => {
+          if (d.id) {
+            let dName = d.name || d.full_name;
+            // Filter out placeholder names from directory as well
+            if (dName && (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor')) {
+              dName = null;
+            }
+            if (dName) doctorsMap[d.id.toString()] = dName;
+          }
+        });
       }
 
-      // Fetch last visits
+      const fullName = profileRes.data?.name || profileRes.data?.full_name || 'Patient';
+      setPatientName(fullName);
+      setPatientAvatar(profileRes.data?.avatar_url || null);
+
+      const appointments = aptRes.data || [];
+      const now = new Date();
+
+      const upcoming = appointments
+        .map(apt => {
+          // Enrich with doctor name from map if missing
+          if (!apt.doctor_name || apt.doctor_name === "Unknown Doctor" || apt.doctor_name.toLowerCase() === 'encrypted') {
+            if (doctorsMap[apt.doctor_id]) {
+              apt.doctor_name = doctorsMap[apt.doctor_id];
+            }
+          }
+          return {
+            ...apt,
+            sortDate: new Date(apt.appointment_date || apt.requested_date || apt.scheduled_at)
+          };
+        })
+        .filter(apt => {
+          if (isNaN(apt.sortDate.getTime())) return false;
+          const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+          return apt.sortDate >= twoHoursAgo && (apt.status === 'accepted' || apt.status === 'pending');
+        })
+        .sort((a, b) => a.sortDate - b.sortDate);
+
+      setNextAppointment(upcoming.length > 0 ? upcoming[0] : null);
+
       try {
-        const consultationsRes = await patientAPI.getMyConsultations(5).catch(() => ({ data: [] }));
+        const consultationsRes = await patientAPI.getMyConsultations(10).catch(() => ({ data: [] }));
         const consultations = consultationsRes.data?.consultations || consultationsRes.data || [];
-        setRecentVisits(Array.isArray(consultations) ? consultations : []);
+
+        const visits = Array.isArray(consultations) ? consultations.map(c => {
+          if (!c.doctorName || c.doctorName === "Unknown Doctor" || c.doctorName.toLowerCase() === 'encrypted') {
+            // 1. Try map
+            if (doctorsMap[c.doctorId || c.doctor_id]) {
+              c.doctorName = doctorsMap[c.doctorId || c.doctor_id];
+            }
+            // 2. Try matching with appointments
+            else {
+              let match = appointments.find(a => a.id === c.appointment_id);
+              if (!match) {
+                match = appointments.find(a =>
+                  (a.doctor_id === (c.doctorId || c.doctor_id)) &&
+                  moment(a.requested_date || a.scheduled_at).isSame(moment(c.scheduledAt), 'hour')
+                );
+              }
+              if (match && (match.doctor_name || match.doctor?.full_name)) {
+                c.doctorName = match.doctor_name || match.doctor?.full_name;
+              }
+            }
+          }
+          return c;
+        }) : [];
+
+        if (visits.length === 0) {
+          const lastApts = appointments
+            .filter(a => a.status === 'completed')
+            .slice(0, 3)
+            .map(a => ({
+              ...a,
+              doctorName: a.doctor_name || doctorsMap[a.doctor_id] || 'Doctor',
+              scheduledAt: a.requested_date || a.scheduled_at,
+              status: 'completed'
+            }));
+          setRecentVisits(lastApts);
+        } else {
+          setRecentVisits(visits);
+        }
       } catch (err) {
         setRecentVisits([]);
       }
 
-      // Fetch unread notifications count
       try {
-        const notifRes = await notificationAPI.getNotifications({ is_read: false, limit: 1 });
-        setUnreadCount(notifRes.data?.total || 0);
-      } catch (err) {
-        setUnreadCount(0);
-      }
+        const statsRes = await patientAPI.getHealthMetrics(profileRes.data?.id).catch(() => ({ data: [] }));
+        const metrics = Array.isArray(statsRes.data) ? statsRes.data : [];
+        const latest = {};
+        metrics.forEach(m => {
+          if (!latest[m.metric_type]) {
+            latest[m.metric_type] = m;
+          }
+        });
+        setVitals({
+          heartRate: latest['heart_rate']?.value || null,
+          bloodPressure: latest['blood_pressure']?.value || null,
+          weight: latest['weight']?.value || null,
+          temperature: latest['temperature']?.value || null,
+          respiratoryRate: latest['respiratory_rate']?.value || null,
+          oxygenSaturation: latest['spo2']?.value || latest['oxygen_saturation']?.value || null,
+        });
+      } catch (err) { }
+
+      try {
+        const notifRes = await notificationAPI.getNotifications({ is_read: false, limit: 10 });
+        const unreadList = Array.isArray(notifRes.data) ? notifRes.data : [];
+        setUnreadCount(unreadList.length);
+      } catch (err) { }
 
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -99,381 +180,424 @@ export default function PatientDashboard({ navigation }) {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
-  const getTodayDate = () => {
-    const options = { weekday: 'long', month: 'long', day: 'numeric' };
-    return new Date().toLocaleDateString('en-US', options);
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
   };
 
   const formatAMPM = (date) => {
     if (!(date instanceof Date) || isNaN(date.getTime())) return 'N/A';
     let hours = date.getHours();
     let minutes = date.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const ampm = hours >= 12 ? 'pm' : 'am';
     hours = hours % 12;
     hours = hours ? hours : 12;
     minutes = minutes < 10 ? '0' + minutes : minutes;
-    return hours + ':' + minutes + ' ' + ampm;
+    return hours + ':' + minutes + ampm;
   };
 
   if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading your healthy dashboard...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingWrapper}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Sidebar
-        isVisible={isSidebarVisible}
-        onClose={() => setIsSidebarVisible(false)}
-        navigation={navigation}
-      />
-
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => setIsSidebarVisible(true)} style={styles.menuBtn}>
-            <Ionicons name="menu-outline" size={28} color="#1A1A1A" />
-          </TouchableOpacity>
-          <View style={styles.greetingContainer}>
-            <Text style={styles.greetingText}>{getGreeting()},</Text>
-            <Text style={styles.nameText}>{patientName.split(' ')[0]}</Text>
-          </View>
-        </View>
-
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.headerIconBtn}
-            onPress={() => navigation.navigate('PatientNotificationsScreen')}
-          >
-            <Ionicons name="notifications-outline" size={26} color="#1A1A1A" />
-            {unreadCount > 0 && (
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifCount}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('PatientSettingsScreen')}>
-            <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={20} color="white" />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scrollContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
       >
-        <Text style={styles.todayText}>{getTodayDate()}</Text>
+        {/* Modern Header Section */}
+        <View style={styles.headerHero}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => navigation.openDrawer()}>
+              <Ionicons name="apps" size={24} color="#1E293B" />
+            </TouchableOpacity>
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity style={styles.notifBtn} onPress={() => navigation.navigate('Notifications')}>
+                <Ionicons name="notifications-outline" size={24} color="#1E293B" />
+                {unreadCount > 0 && <View style={styles.unreadDot} />}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+                <View style={styles.pfpWrapper}>
+                  {patientAvatar ? (
+                    patientAvatar.toLowerCase().includes('.svg') ? (
+                      <View style={styles.pfp}>
+                        <SvgUri
+                          width="100%"
+                          height="100%"
+                          uri={patientAvatar}
+                          onError={(e) => console.error('❌ [Dashboard] SVG failed:', patientAvatar)}
+                        />
+                      </View>
+                    ) : (
+                      <Image source={{ uri: patientAvatar }} style={styles.pfp} />
+                    )
+                  ) : (
+                    <View style={[styles.pfp, styles.pfpPlaceholder]}>
+                      <Text style={styles.pfpInitial}>{patientName.charAt(0)}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        {/* Up Next Section - Premium Design */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming Appointment</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('ScheduleScreen')}>
-            <Text style={styles.seeAllText}>View All</Text>
-          </TouchableOpacity>
+          <View style={styles.welcomeTextGroup}>
+            <Text style={styles.greetingText}>{getGreeting()},</Text>
+            <Text style={styles.nameText}>{patientName.split(' ')[0]} 👋</Text>
+            <Text style={styles.dateSubText}>{moment().format('dddd, MMMM D').toUpperCase()}</Text>
+          </View>
         </View>
 
-        {nextAppointment ? (
-          <TouchableOpacity
-            style={styles.appointmentCard}
-            onPress={() => navigation.navigate('ScheduleScreen')}
-            activeOpacity={0.9}
-          >
-            <View style={styles.appointmentContent}>
-              <View style={styles.appointmentLogo}>
-                <Ionicons name="videocam" size={24} color="white" />
+        {/* Appointment Card - High Gloss / Modern */}
+        {nextAppointment && (
+          <View style={styles.appointmentContainer}>
+            <TouchableOpacity
+              style={styles.aptGlassCard}
+              activeOpacity={0.9}
+              onPress={() => navigation.navigate('Appointments')}
+            >
+              <View style={styles.aptBadge}>
+                <View style={styles.pulseDot} />
+                <Text style={styles.aptStatusText}>UPCOMING</Text>
               </View>
-              <View style={styles.appointmentDetails}>
-                <View style={styles.appointmentTopRow}>
-                  <Text style={styles.appointmentDoctor}>Dr. {nextAppointment.doctor?.full_name || 'Specialist'}</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: nextAppointment.status === 'accepted' ? '#E8F5E9' : '#FFF3E0' }]}>
-                    <Text style={[styles.statusText, { color: nextAppointment.status === 'accepted' ? '#4CAF50' : '#FF9800' }]}>
-                      {nextAppointment.status?.toUpperCase()}
+
+              <View style={styles.aptMainRow}>
+                <View style={styles.docAvatarBox}>
+                  <Ionicons name="videocam" size={22} color="white" />
+                </View>
+                <View style={styles.aptInfo}>
+                  <Text style={styles.aptDocName}>Dr. {nextAppointment.doctor_name || (nextAppointment.doctor?.full_name && nextAppointment.doctor.full_name !== "Unknown Doctor" ? nextAppointment.doctor.full_name : 'Doctor')}</Text>
+                  <Text style={styles.aptType}>{nextAppointment.reason || 'Medical Consult'}</Text>
+                  <View style={styles.aptTimeLabel}>
+                    <Ionicons name="time" size={14} color="#CBD5E1" />
+                    <Text style={styles.aptTimeText}>
+                      Today • {formatAMPM(nextAppointment.sortDate)}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.appointmentReason} numberOfLines={1}>{nextAppointment.reason || 'Medical Consultation'}</Text>
-                <View style={styles.appointmentTimeRow}>
-                  <Ionicons name="time-outline" size={14} color="#666" />
-                  <Text style={styles.appointmentTimeText}>
-                    {nextAppointment.sortDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} • {formatAMPM(nextAppointment.sortDate)}
-                  </Text>
-                </View>
               </View>
-            </View>
-            {nextAppointment.status === 'accepted' && (
-              <TouchableOpacity
-                style={styles.joinBtnDashboard}
-                onPress={() => navigation.navigate('VideoCallScreen', { appointment: nextAppointment, role: 'patient' })}
-              >
-                <Text style={styles.joinBtnTextDashboard}>Join Call</Text>
-              </TouchableOpacity>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.emptyAptCard}>
-            <View style={styles.emptyAptIcon}>
-              <Ionicons name="calendar-outline" size={32} color="#AAA" />
-            </View>
-            <View style={styles.emptyAptTextContainer}>
-              <Text style={styles.emptyAptTitle}>No upcoming appointments</Text>
-              <Text style={styles.emptyAptSub}>Stay proactive about your health.</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.bookNowBtn}
-              onPress={() => navigation.navigate('ScheduleScreen')}
-            >
-              <Text style={styles.bookNowText}>Book</Text>
+
+              {(nextAppointment.status === 'accepted' || nextAppointment.status === 'scheduled' || nextAppointment.status === 'active') &&
+                (nextAppointment.meet_link || nextAppointment.meetLink || nextAppointment.join_url || nextAppointment.meeting?.join_url || nextAppointment.id) && (
+                  <TouchableOpacity
+                    style={styles.joinButtonSlim}
+                    onPress={() => navigation.navigate('VideoCallScreen', {
+                      appointment: { ...nextAppointment, sortDate: nextAppointment.sortDate ? nextAppointment.sortDate.toISOString() : null },
+                      role: 'patient'
+                    })}
+                  >
+                    <Text style={styles.joinButtonText}>Join Consultation Room</Text>
+                  </TouchableOpacity>
+                )}
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Quick Actions Grid */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActionsGrid}>
-          {[
-            { id: 'book', label: 'Book Appointment', icon: 'calendar', color: '#448AFF', bg: '#E3F2FD', screen: 'ScheduleScreen' },
-            { id: 'records', label: 'Medical Records', icon: 'document-text', color: '#FF9800', bg: '#FFF3E0', screen: 'MedicalRecordsScreen' },
-            { id: 'messages', label: 'Chat with Doctor', icon: 'chatbubbles', color: '#9C27B0', bg: '#F3E5F5', screen: 'MessagesScreen' },
-            { id: 'health', label: 'Health Vitals', icon: 'heart', color: '#F44336', bg: '#FFEBEE', screen: 'HealthMetrics' }
-          ].map((action) => (
-            <TouchableOpacity
-              key={action.id}
-              style={[styles.actionCard, { backgroundColor: action.bg }]}
-              onPress={() => navigation.navigate(action.screen)}
-            >
-              <View style={[styles.actionIconBox, { backgroundColor: 'rgba(255,255,255,0.6)' }]}>
-                <Ionicons name={action.icon} size={26} color={action.color} />
-              </View>
-              <Text style={styles.actionLabel}>{action.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Recent Activity */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Visits</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('MedicalRecordsScreen')}>
-            <Text style={styles.seeAllText}>History</Text>
+        {/* Vitals Horizontal Strip - Compact & Sexy */}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Track Your Vitals</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('HealthMetrics')}>
+            <Text style={styles.historyLink}>Full History</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.recentActivityContainer}>
-          {recentVisits.length > 0 ? (
-            recentVisits.slice(0, 3).map((visit, index) => (
-              <TouchableOpacity
-                key={visit.id || index}
-                style={styles.activityItem}
-                onPress={() => navigation.navigate('MedicalRecordsScreen')}
-              >
-                <View style={styles.activityIcon}>
-                  <Ionicons name="medical" size={18} color={COLORS.primary} />
-                </View>
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityUser}>Dr. {visit.doctor_name || visit.doctor?.full_name || 'Specialist'}</Text>
-                  <Text style={styles.activityType}>{visit.status?.toUpperCase() || 'COMPLETED'}</Text>
-                </View>
-                <Text style={styles.activityTime}>
-                  {new Date(visit.created_at || visit.scheduled_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
-                </Text>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View style={styles.emptyActivity}>
-              <Text style={styles.emptyActivityText}>No recent visits recorded</Text>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.vitalsScroller}>
+          {[
+            { key: 'heartRate', label: 'Heart Rate', unit: 'bpm', icon: 'heart', color: '#F43F5E', bg: '#FFF1F2' },
+            { key: 'bloodPressure', label: 'Blood Pressure', unit: 'mmHg', icon: 'fitness', color: '#3B82F6', bg: '#EFF6FF' },
+            { key: 'oxygenSaturation', label: 'SpO2', unit: '%', icon: 'water', color: '#06B6D4', bg: '#ECFEFF' },
+            { key: 'temperature', label: 'Temperature', unit: '°C', icon: 'thermometer', color: '#F59E0B', bg: '#FFFBEB' },
+            { key: 'weight', label: 'Weight', unit: 'kg', icon: 'barbell', color: '#10B981', bg: '#ECFDF5' },
+            { key: 'respiratoryRate', label: 'Respiratory', unit: 'br/m', icon: 'cloud', color: '#8B5CF6', bg: '#F5F3FF' },
+          ].map((v) => (
+            <TouchableOpacity
+              key={v.key}
+              style={styles.statPill}
+              onPress={() => navigation.navigate('HealthMetrics')}
+            >
+              <View style={[styles.pillIcon, { backgroundColor: v.bg }]}>
+                <Ionicons name={v.icon} size={16} color={v.color} />
+              </View>
+              <View>
+                <Text style={styles.pillValue}>{vitals[v.key] || '—'}<Text style={styles.pillUnit}> {v.unit}</Text></Text>
+                <Text style={styles.pillLabel}>{v.label}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-      <BottomNavBar navigation={navigation} activeTab="Home" />
+        {/* Action Grid - Compact & Colorful */}
+        <View style={styles.quickActionBox}>
+          <Text style={styles.sectionTitle}>Main Actions</Text>
+          <View style={styles.actionGridRow}>
+            {[
+              { id: 'book', label: 'Book Visit', icon: 'calendar-clear', color: '#4F46E5', bg: '#EEF2FF', screen: 'Appointments' },
+              { id: 'records', label: 'My Records', icon: 'document-attach', color: '#7C3AED', bg: '#F5F3FF', screen: 'Medical Records' },
+              { id: 'faq', label: 'Help Center', icon: 'help-buoy', color: '#475569', bg: '#F8FAFC', screen: 'FAQScreen' }
+            ].map((action) => (
+              <TouchableOpacity
+                key={action.id}
+                style={styles.actionItem}
+                onPress={() => navigation.navigate(action.screen)}
+              >
+                <View style={[styles.actionIconCircle, { backgroundColor: action.bg }]}>
+                  <Ionicons name={action.icon} size={22} color={action.color} />
+                </View>
+                <Text style={styles.actionItemText}>{action.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Recent Activity - Minimalist List */}
+        <View style={styles.recentView}>
+          <Text style={styles.sectionTitle}>Recent Encounters</Text>
+          <View style={styles.timelineBox}>
+            {recentVisits.length > 0 ? (
+              recentVisits.slice(0, 3).map((visit, index) => (
+                <TouchableOpacity
+                  key={visit.id || index}
+                  style={styles.timelineRow}
+                  onPress={() => navigation.navigate('Medical Records')}
+                >
+                  <View style={styles.timelineIcon}>
+                    <Ionicons name="medical" size={16} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.timelineBody}>
+                    <Text style={styles.timelineDoc}>
+                      {(() => {
+                        let name = (visit.doctorName && !visit.doctorName.toLowerCase().includes('unknown') && !visit.doctorName.toLowerCase().includes('encrypted'))
+                          ? visit.doctorName
+                          : (visit.doctor_name || 'Doctor');
+                        return name.startsWith('Dr. ') ? name : `Dr. ${name}`;
+                      })()}
+                    </Text>
+                    <Text style={styles.timelineReason} numberOfLines={1}>{visit.diagnosis || visit.reason || 'Routine Checkup'}</Text>
+                  </View>
+                  <Text style={styles.timelineDate}>
+                    {visit.scheduledAt ? moment(visit.scheduledAt).format('MMM D') : 'Recent'}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.noEncounters}>No recent medical activity found.</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 20, color: '#666', fontSize: 16, fontWeight: '500' },
+  container: { flex: 1, backgroundColor: '#FBFCFE' },
+  loadingWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContainer: { paddingBottom: 60 },
 
-  header: {
+  // Header Hero
+  headerHero: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: 'white',
+    marginBottom: 20
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center' },
-  menuBtn: { marginRight: 15 },
-  greetingContainer: { justifyContent: 'center' },
-  greetingText: { fontSize: 14, color: '#888', fontWeight: '500' },
-  nameText: { fontSize: 22, fontWeight: 'bold', color: '#1A1A1A' },
-
-  headerRight: { flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { padding: 8, marginRight: 5, position: 'relative' },
-  notifBadge: {
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16
+  },
+  notifBtn: { position: 'relative', padding: 4 },
+  unreadDot: {
     position: 'absolute',
     top: 6,
-    right: 6,
-    backgroundColor: '#FF5252',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F43F5E',
     borderWidth: 1.5,
     borderColor: 'white'
   },
-  notifCount: { color: 'white', fontSize: 9, fontWeight: 'bold' },
-  avatarContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.primary,
+  pfpWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E2E8F0'
+  },
+  pfp: { width: '100%', height: '100%' },
+  pfpPlaceholder: {
+    backgroundColor: '#4F46E5',
     justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 5
-  },
-
-  scrollContent: { padding: 20, paddingBottom: 100 },
-  todayText: { fontSize: 13, color: COLORS.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 20 },
-
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 },
-  sectionTitle: { fontSize: 19, fontWeight: 'bold', color: '#1A1A1A' },
-  seeAllText: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
-
-  // Appointment Card
-  appointmentCard: {
-    backgroundColor: '#000', // Premium dark card
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 30,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 15
-  },
-  appointmentContent: { flexDirection: 'row', alignItems: 'center' },
-  appointmentLogo: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15
-  },
-  appointmentDetails: { flex: 1 },
-  appointmentTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  appointmentDoctor: { fontSize: 18, fontWeight: 'bold', color: 'white' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  statusText: { fontSize: 10, fontWeight: '800' },
-  appointmentReason: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginBottom: 10 },
-  appointmentTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  appointmentTimeText: { fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
-  joinBtnDashboard: {
-    backgroundColor: COLORS.primary,
-    marginTop: 15,
-    paddingVertical: 12,
-    borderRadius: 12,
     alignItems: 'center'
   },
-  joinBtnTextDashboard: { color: 'white', fontWeight: 'bold', fontSize: 15 },
+  pfpInitial: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
-  // Empty Appointment
-  emptyAptCard: {
+  welcomeTextGroup: { marginTop: 4 },
+  greetingText: { fontSize: 13, color: '#64748B', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
+  nameText: { fontSize: 24, fontWeight: '800', color: '#0F172A', marginTop: 2 },
+  dateSubText: { fontSize: 10, color: '#94A3B8', fontWeight: '700', marginTop: 6, letterSpacing: 0.2 },
+
+  // Appointment Container
+  appointmentContainer: { paddingHorizontal: 20, marginBottom: 28 },
+  aptGlassCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
+    padding: 20,
+    elevation: 12,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+  },
+  aptBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F2F5',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 30,
-    borderStyle: 'dashed',
-    borderWidth: 1.5,
-    borderColor: '#CCC'
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 16
   },
-  emptyAptIcon: {
+  pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 6 },
+  aptStatusText: { color: '#10B981', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+
+  aptMainRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  docAvatarBox: {
     width: 50,
     height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E0E4E9',
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15
+    alignItems: 'center'
   },
-  emptyAptTextContainer: { flex: 1 },
-  emptyAptTitle: { fontSize: 15, fontWeight: 'bold', color: '#444' },
-  emptyAptSub: { fontSize: 13, color: '#888', marginTop: 2 },
-  bookNowBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 10 },
-  bookNowText: { color: 'white', fontWeight: 'bold', fontSize: 13 },
+  aptInfo: { flex: 1 },
+  aptDocName: { fontSize: 18, fontWeight: 'bold', color: 'white' },
+  aptType: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  aptTimeLabel: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  aptTimeText: { fontSize: 13, color: '#CBD5E1', fontWeight: '600' },
 
-  // Quick Actions Grid
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 15,
-    marginBottom: 30
+  joinButtonSlim: {
+    backgroundColor: '#3B82F6',
+    marginTop: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center'
   },
-  actionCard: {
-    width: (width - 55) / 2,
-    padding: 20,
-    borderRadius: 24,
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    minHeight: 120
-  },
-  actionIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 15
-  },
-  actionLabel: { fontSize: 15, fontWeight: 'bold', color: '#1A1A1A', lineHeight: 20 },
+  joinButtonText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
 
-  // Recent Activity
-  recentActivityContainer: {
-    backgroundColor: '#F9FAFC',
-    borderRadius: 20,
-    padding: 10,
-  },
-  activityItem: {
+  // Section Headers
+  sectionTitleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 24,
+    marginBottom: 12
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#1E293B' },
+  historyLink: { fontSize: 12, color: '#4F46E5', fontWeight: '700' },
+
+  // Vitals Scroller
+  vitalsScroller: { paddingLeft: 24, paddingRight: 8, gap: 12, paddingBottom: 10 },
+  statPill: {
     backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 15,
-    marginBottom: 10,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
+    borderRadius: 20,
+    padding: 12,
+    paddingRight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    elevation: 2,
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
     shadowRadius: 5
   },
-  activityIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.primary + '10', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  activityInfo: { flex: 1 },
-  activityUser: { fontSize: 15, fontWeight: 'bold', color: '#1A1A1A' },
-  activityType: { fontSize: 11, color: '#888', fontWeight: '700', marginTop: 2 },
-  activityTime: { fontSize: 12, color: '#AAA', fontWeight: '500' },
-  emptyActivity: { padding: 30, alignItems: 'center' },
-  emptyActivityText: { color: '#AAA', fontSize: 14 }
+  pillIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  pillValue: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  pillUnit: { fontSize: 10, fontWeight: '600', color: '#94A3B8' },
+  pillLabel: { fontSize: 10, color: '#64748B', fontWeight: '500', marginTop: 1 },
+
+  // Quick Action Box
+  quickActionBox: { paddingHorizontal: 24, marginTop: 24 },
+  actionGridRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    gap: 12
+  },
+  actionItem: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    gap: 10
+  },
+  actionIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  actionItemText: { fontSize: 11, fontWeight: '700', color: '#334155', textAlign: 'center' },
+
+  // Recent Encounters
+  recentView: { paddingHorizontal: 24, marginTop: 30 },
+  timelineBox: {
+    marginTop: 12,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC'
+  },
+  timelineIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  timelineBody: { flex: 1 },
+  timelineDoc: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  timelineReason: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  timelineDate: { fontSize: 11, color: '#94A3B8', fontWeight: '600' },
+  noEncounters: { textAlign: 'center', padding: 20, color: '#94A3B8', fontSize: 13, fontStyle: 'italic' }
 });

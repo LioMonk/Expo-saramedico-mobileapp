@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api from '../../services/api';
+import { doctorAPI, getUserData } from '../../services/api';
+import { TOKEN_CONFIG } from '../../services/config';
 
 const SPECIALIZATIONS = [
     'Cardiology',
@@ -33,8 +34,12 @@ export default function DoctorServicesScreen({ route, navigation }) {
     const handleSave = async () => {
         setSaving(true);
         try {
-            // Update backend
-            await api.patch('/doctor/profile', { specialty: selectedSpecialty });
+            // Include credentials (license number) to verify doctor as requested
+            const userData = await getUserData();
+            await doctorAPI.updateProfile({
+                specialty: selectedSpecialty,
+                license_number: userData.license_number !== 'Not provided' ? userData.license_number : undefined
+            });
 
             // Update local storage
             const doctorProfile = await AsyncStorage.getItem('doctor_profile');
@@ -46,12 +51,22 @@ export default function DoctorServicesScreen({ route, navigation }) {
                 await AsyncStorage.setItem('doctor_profile', JSON.stringify({ specialty: selectedSpecialty }));
             }
 
+            // Sync with main user data key
+            const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
+            if (userDataLocal) {
+                const parsedUser = JSON.parse(userDataLocal);
+                parsedUser.specialty = selectedSpecialty;
+                await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUser));
+            }
+
             Alert.alert('Success', 'Specialty updated successfully', [
                 { text: 'OK', onPress: () => navigation.goBack() }
             ]);
         } catch (error) {
             console.error('Error saving specialty:', error);
-            Alert.alert('Error', 'Failed to update specialty. Please try again.');
+            const detail = error.response?.data?.detail;
+            const message = typeof detail === 'string' ? detail : 'Failed to update specialty. Please try again.';
+            Alert.alert('Error', message);
         } finally {
             setSaving(false);
         }

@@ -86,7 +86,13 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                                 style={styles.doctorImage}
                             />
                             <View style={styles.doctorInfo}>
-                                <Text style={styles.doctorName}>{appointment.patient_name || 'Unknown Patient'}</Text>
+                                <Text style={styles.doctorName}>
+                                    {(() => {
+                                        let name = appointment.patient_name || 'Patient';
+                                        if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown patient') name = 'Patient';
+                                        return name;
+                                    })()}
+                                </Text>
                                 <Text style={styles.doctorSpecialty}>Patient</Text>
                             </View>
                         </>
@@ -100,7 +106,13 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                                 style={styles.doctorImage}
                             />
                             <View style={styles.doctorInfo}>
-                                <Text style={styles.doctorName}>Dr. {appointment.doctor_name || 'Unknown Doctor'}</Text>
+                                <Text style={styles.doctorName}>
+                                    {(() => {
+                                        let name = appointment.doctor_name || 'Doctor';
+                                        if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown doctor') name = 'Doctor';
+                                        return name.startsWith('Dr. ') ? name : `Dr. ${name}`;
+                                    })()}
+                                </Text>
                                 <Text style={styles.doctorSpecialty}>Consultation</Text>
                             </View>
                         </>
