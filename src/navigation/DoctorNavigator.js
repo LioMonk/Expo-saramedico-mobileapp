@@ -4,10 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View } from 'react-native';
 import AuthService from '../services/authService';
 
-// Onboarding
-import DoctorSpecialtyScreen from '../screens/doctor/DoctorSpecialtyScreen';
-import DoctorMicrophoneTestScreen from '../screens/doctor/DoctorMicrophoneTestScreen';
-
 // Dashboard & Main
 import DoctorDashboard from '../screens/doctor/DoctorDashboard';
 import DoctorSearchScreen from '../screens/doctor/DoctorSearchScreen';
@@ -69,16 +65,8 @@ export default function DoctorNavigator({ navigation }) {
         throw new Error('Unauthorized');
       }
 
-      const isFirstLogin = await AsyncStorage.getItem('doctor_first_login');
-      if (isFirstLogin === 'true') {
-        // First time login - go through onboarding
-        setInitialRoute('DoctorSpecialty');
-        // Clear the flag so next time they go to dashboard
-        await AsyncStorage.removeItem('doctor_first_login');
-      } else {
-        // Returning user - go straight to dashboard
-        setInitialRoute('DoctorDashboard');
-      }
+      // Doctors always go straight to dashboard now
+      setInitialRoute('DoctorDashboard');
     } catch (error) {
       console.error('Error in DoctorNavigator guard:', error);
       // Failsafe: push them back to Auth
@@ -100,16 +88,13 @@ export default function DoctorNavigator({ navigation }) {
 
   return (
     <Stack.Navigator
-      initialRouteName={initialRoute}
+      initialRouteName="DoctorDashboard"
       screenOptions={{
         headerShown: false,
         cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
       }}
     >
-      {/* 1. Onboarding Flow - No Upload Screen */}
-      <Stack.Screen name="DoctorSpecialty" component={DoctorSpecialtyScreen} />
-      <Stack.Screen name="DoctorSpecialtyScreen" component={DoctorSpecialtyScreen} />
-      <Stack.Screen name="DoctorMicrophoneTestScreen" component={DoctorMicrophoneTestScreen} />
+      {/* Onboarding Flow removed: DoctorSpecialty & DoctorMicrophoneTestScreen */}
 
       {/* 2. Main Dashboard */}
       <Stack.Screen name="DoctorDashboard" component={DoctorDashboard} />

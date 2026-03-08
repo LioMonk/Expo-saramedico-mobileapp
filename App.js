@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,17 +12,44 @@ import PatientNavigator from './src/navigation/PatientNavigator';
 import DoctorNavigator from './src/navigation/DoctorNavigator';
 import AdminNavigator from './src/navigation/AdminNavigator';
 import HospitalNavigator from './src/navigation/HospitalNavigator';
-import SplashScreen from './src/screens/startup/SplashScreen';
-import OnboardingScreen from './src/screens/startup/OnboardingScreen';
+import AuthService from './src/services/authService';
 
 const Stack = createStackNavigator();
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [initialRoute, setInitialRoute] = useState('Auth');
+
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const session = await AuthService.restoreSession();
+        if (session.isAuthenticated && session.navTarget !== 'Auth') {
+          setInitialRoute(session.navTarget);
+        }
+      } catch (e) {
+        console.log('[App] Session restoration failed:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
+        <ActivityIndicator size="large" color="#359AFF" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator
-          initialRouteName="Splash"
+          initialRouteName={initialRoute}
           screenOptions={{
             headerShown: false,
             // Standard iOS-style slide animation for all screens
@@ -30,19 +58,10 @@ export default function App() {
             gestureDirection: 'horizontal',
           }}
         >
-          {/* 0. Startup Flow */}
-          <Stack.Screen name="Splash" component={SplashScreen} />
-          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-
-          {/* 1. Auth Stack 
-            (Contains Login, SignUp, OTP, ResetPassword) 
-          */}
+          {/* 1. Auth Stack  */}
           <Stack.Screen name="Auth" component={AuthNavigator} />
 
-          {/* 2. Role-Based Stacks 
-            Note: The 'name' props here (e.g., 'DoctorFlow') match 
-            exactly what you call in LoginScreen: navigation.replace('DoctorFlow')
-          */}
+          {/* 2. Role-Based Stacks */}
           <Stack.Screen name="PatientFlow" component={PatientNavigator} />
           <Stack.Screen name="DoctorFlow" component={DoctorNavigator} />
           <Stack.Screen name="AdminFlow" component={AdminNavigator} />

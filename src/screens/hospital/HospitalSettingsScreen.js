@@ -63,10 +63,12 @@ export default function HospitalSettingsScreen({ navigation }) {
             setLoading(true);
 
             // 1. Load Admin Profile
+            let isUserAdmin = false;
             try {
                 const profileRes = await authAPI.getCurrentUser();
                 const u = profileRes.data || {};
-                setIsAdmin(u.role === 'admin');
+                isUserAdmin = u.role === 'admin';
+                setIsAdmin(isUserAdmin);
                 setHospitalInfo(prev => ({
                     ...prev,
                     email: u.email || '',
@@ -76,16 +78,18 @@ export default function HospitalSettingsScreen({ navigation }) {
                 }));
             } catch (e) { console.log('Profile fetch error'); }
 
-            // 2. Load Organization Settings
-            try {
-                const settingsRes = await hospitalAPI.getSettings();
-                const org = settingsRes.data || {};
-                setHospitalInfo(prev => ({
-                    ...prev,
-                    name: org.name || prev.name, // Prefer org name if available
-                }));
-            } catch (e) {
-                console.log('Org fetch info:', e.message);
+            // 2. Load Organization Settings (Only for Admins)
+            if (isUserAdmin) {
+                try {
+                    const settingsRes = await hospitalAPI.getSettings();
+                    const org = settingsRes.data || {};
+                    setHospitalInfo(prev => ({
+                        ...prev,
+                        name: org.name || prev.name, // Prefer org name if available
+                    }));
+                } catch (e) {
+                    console.log('Org fetch info:', e.message);
+                }
             }
         } catch (error) {
             console.log('Settings load error:', error.message);

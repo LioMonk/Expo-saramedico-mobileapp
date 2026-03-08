@@ -209,14 +209,6 @@ const AuthService = {
 
         await storage.saveTokens(access_token, refresh_token, user);
 
-        // Mark first-time login for doctor onboarding flow
-        if (user.role === ROLES.DOCTOR) {
-            const wasFirstLogin = await AsyncStorage.getItem('doctor_first_login');
-            if (wasFirstLogin === null) {
-                await AsyncStorage.setItem('doctor_first_login', 'true');
-            }
-        }
-
         const navTarget = ROLE_NAVIGATION_MAP[user.role] || 'Auth';
 
         return { user, accessToken: access_token, refreshToken: refresh_token, navTarget };

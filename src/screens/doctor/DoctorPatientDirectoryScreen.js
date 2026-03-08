@@ -192,8 +192,8 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
                   onPress={() => handlePatientPress(p)}
                 >
                   <View style={styles.cardHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                      <Text style={styles.nameText} numberOfLines={1}>{p.name || 'Unknown Patient'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap', gap: 8 }}>
+                      <Text style={[styles.nameText, { flexShrink: 1 }]} numberOfLines={1}>{p.name || 'Unknown Patient'}</Text>
                       {/* Status Badge */}
                       {p.statusTag || p.status ? (
                         <View style={[styles.badge, { backgroundColor: p.statusClass === 'pending' ? '#FEF3C7' : '#DCFCE7' }]}>
@@ -216,9 +216,9 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
                       <Text style={styles.gridLabel}>DOB / AGE</Text>
                       <Text style={styles.gridValue}>{p.dob || 'N/A'} {age !== null ? `(${age}y)` : ''}</Text>
                     </View>
-                    <View style={styles.gridItem}>
+                    <View style={[styles.gridItem, { flex: 1.2 }]}>
                       <Text style={styles.gridLabel}>MRN</Text>
-                      <Text style={styles.gridValue}>{mrnStr}</Text>
+                      <Text style={styles.gridValue} numberOfLines={1} ellipsizeMode="tail">{mrnStr}</Text>
                     </View>
                     <View style={styles.gridItem}>
                       <Text style={styles.gridLabel}>LAST VISIT</Text>
@@ -316,10 +316,10 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   badgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  gridItem: { width: '47%' },
-  gridLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 4 },
-  gridValue: { fontSize: 13, color: '#475569', fontWeight: '500' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  gridItem: { width: '45%', marginBottom: 12 },
+  gridLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8', marginBottom: 2 },
+  gridValue: { fontSize: 13, color: '#475569', fontWeight: '500', flexShrink: 1 },
 
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
   loadingText: { marginTop: 15, fontSize: 14, color: '#64748B' },

@@ -182,8 +182,8 @@ export default function SignUpScreen({ navigation }) {
             text: 'OK',
             onPress: async () => {
               // Mark as first-time login for doctors
+              // Direct to Doctor dashboard, bypassing onboarding
               if (user.role === 'doctor') {
-                await AsyncStorage.setItem('doctor_first_login', 'true');
                 navigation.replace('DoctorFlow');
               } else if (user.role === 'hospital') {
                 navigation.replace('HospitalFlow');

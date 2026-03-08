@@ -70,6 +70,7 @@ export default function HospitalDashboard({ navigation }) {
                 const user = profileRes.data;
                 setOrgName(user?.name || user?.full_name || 'Hospital Admin');
                 setHospitalAvatar(user?.avatar || user?.avatar_url || null);
+                setOrgId(user?.role); // store role in orgId temporarily for access check
             } catch (e) { /* silent fallback */ }
 
             // 2. Fetch Real Metrics (Aggregated from members and appointments)
@@ -197,7 +198,13 @@ export default function HospitalDashboard({ navigation }) {
                         <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())} style={styles.iconBox}>
                             <Ionicons name="grid" size={20} color={PALETTE.blue} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.avatarNode} onPress={() => navigation.navigate('HospitalSettingsScreen')}>
+                        <TouchableOpacity style={styles.avatarNode} onPress={() => {
+                            if (orgId === 'admin') {
+                                navigation.navigate('HospitalSettingsScreen');
+                            } else {
+                                Alert.alert('Access Denied', 'Only administrators can access system settings.');
+                            }
+                        }}>
                             {hospitalAvatar ? (
                                 <Image source={{ uri: hospitalAvatar }} style={styles.avatarImg} />
                             ) : (
