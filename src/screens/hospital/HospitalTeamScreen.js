@@ -75,7 +75,11 @@ export default function HospitalTeamScreen({ navigation }) {
                             await teamAPI.removeTeamMember(member.id);
                             loadTeamData();
                         } catch (error) {
-                            Alert.alert('Error', 'Failed to remove team member');
+                            console.log('Remove member error:', error);
+                            const detail = error.response?.data?.detail;
+                            const msg = Array.isArray(detail) ? detail.map(d => d.msg).join('\n') : (detail || 'Permission denied. Hospital administrators may need higher privileges for this action.');
+                            Alert.alert('Removal Failed', msg);
+                            loadTeamData();
                         }
                     }
                 },
@@ -132,7 +136,10 @@ export default function HospitalTeamScreen({ navigation }) {
                         </View>
                         <View style={styles.statBox}>
                             <Text style={styles.statNumber}>
-                                {teamMembers.filter(m => m.status === 'active').length}
+                                {teamMembers.filter(m => {
+                                    const status = m.status?.toLowerCase();
+                                    return status === 'active' || status === 'accepted' || status === 'approved' || m.is_active === true;
+                                }).length}
                             </Text>
                             <Text style={styles.statLabel}>Active</Text>
                         </View>
@@ -194,17 +201,23 @@ export default function HospitalTeamScreen({ navigation }) {
                                     )}
                                 </View>
                                 <View style={styles.memberActions}>
-                                    <View style={[
-                                        styles.statusBadge,
-                                        { backgroundColor: member.status === 'active' ? '#E8F5E9' : '#FFF3E0' }
-                                    ]}>
-                                        <Text style={[
-                                            styles.statusText,
-                                            { color: member.status === 'active' ? '#4CAF50' : '#FF9800' }
-                                        ]}>
-                                            {member.status === 'active' ? 'Active' : 'Pending'}
-                                        </Text>
-                                    </View>
+                                    {(() => {
+                                        const status = member.status?.toLowerCase();
+                                        const isActive = status === 'active' || status === 'accepted' || status === 'approved' || member.is_active === true;
+                                        return (
+                                            <View style={[
+                                                styles.statusBadge,
+                                                { backgroundColor: isActive ? '#E8F5E9' : '#FFF3E0' }
+                                            ]}>
+                                                <Text style={[
+                                                    styles.statusText,
+                                                    { color: isActive ? '#4CAF50' : '#FF9800' }
+                                                ]}>
+                                                    {isActive ? 'Active' : (status === 'invited' || status === 'pending' || !status ? 'Pending' : status.charAt(0).toUpperCase() + status.slice(1))}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
                                     <TouchableOpacity
                                         style={styles.removeButton}
                                         onPress={() => handleRemoveMember(member)}

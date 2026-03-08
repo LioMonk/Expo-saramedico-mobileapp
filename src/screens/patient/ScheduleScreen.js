@@ -21,12 +21,29 @@ import { COLORS } from '../../constants/theme';
 import { patientAPI, calendarAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 
+const TEST_DOCTOR_BLACKLIST = [
+  'soap tester',
+  'sync test',
+  'clinical flow',
+  'test doctor',
+  'medical specialist',
+  'integration test',
+  'notification tester'
+];
+
+const isBlacklisted = (name) => {
+  if (!name) return false;
+  const n = name.toLowerCase();
+  return TEST_DOCTOR_BLACKLIST.some(black => n.includes(black));
+};
+
 export default function ScheduleScreen({ navigation }) {
   const [appointments, setAppointments] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // View & Filter State
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
@@ -68,14 +85,46 @@ export default function ScheduleScreen({ navigation }) {
 
       // Create map of doctor id -> name (matching website logic)
       const dMap = {};
-      const doctorsData = doctorsRes.data?.results || doctorsRes.data || [];
-      if (Array.isArray(doctorsData)) {
-        doctorsData.forEach(d => {
-          dMap[d.id] = d.full_name || (d.name ? (d.name.startsWith("Dr.") ? d.name : `Dr. ${d.name}`) : "Doctor");
+      const directoryData = doctorsRes.data?.results || doctorsRes.data || [];
+      const registerDoc = (d) => {
+        if (!d.id) return;
+        let name = (d.full_name || d.name || '').trim();
+
+        // 1. Skip if it's a known test/garbage name
+        if (isBlacklisted(name)) return;
+
+        const lowerName = name.toLowerCase();
+
+        // Check for encryption placeholders
+        if (!name || lowerName === 'unknown doctor' || lowerName === 'encrypted' || name.startsWith('gAAAAA')) {
+          if (d.email) {
+            const prefix = d.email.split('@')[0];
+            const cleanPrefix = prefix.split('.')[0].replace(/[0-9]/g, '');
+            name = cleanPrefix.charAt(0).toUpperCase() + cleanPrefix.slice(1);
+          } else if (d.name && !isBlacklisted(d.name)) {
+            name = d.name;
+          } else {
+            return; // Skip if no name and no email fallback
+          }
+        }
+
+        if (!name.startsWith('Dr.')) name = `Dr. ${name}`;
+        dMap[d.id] = name;
+      };
+
+      // 1. Register from directory
+      if (Array.isArray(directoryData)) directoryData.forEach(registerDoc);
+
+      // 2. Register from appointments themselves (Backend often provides decrypted names here)
+      const rawAppts = appointmentsRes.data || [];
+      if (Array.isArray(rawAppts)) {
+        rawAppts.forEach(a => {
+          if (a.doctor_id && a.doctor_name) {
+            registerDoc({ id: a.doctor_id, name: a.doctor_name, email: a.doctor_email });
+          }
         });
       }
 
-      const rawAppts = appointmentsRes.data || [];
       const rawConsults = consultationsRes.data?.consultations || consultationsRes.data || [];
 
       // Merge and enrich (matches website appointments/page.jsx)
@@ -179,7 +228,7 @@ export default function ScheduleScreen({ navigation }) {
   const handleSaveEvent = async () => {
     if (!eventForm.title.trim()) return Alert.alert('Error', 'Title is required');
 
-    setLoading(true);
+    setSaving(true);
     try {
       const payload = {
         title: eventForm.title,
@@ -190,18 +239,23 @@ export default function ScheduleScreen({ navigation }) {
 
       if (eventForm.id) {
         await calendarAPI.updateEvent(eventForm.id, payload);
-        Alert.alert('Success', 'Event updated successfully');
+        // We use a small timeout to let the modal close smoothly before showing success
+        setTimeout(() => Alert.alert('Success', 'Event updated successfully'), 400);
       } else {
         await calendarAPI.createEvent(payload);
-        Alert.alert('Success', 'Personal event created');
+        setTimeout(() => Alert.alert('Success', 'Personal event created'), 400);
       }
+
       setShowEventModal(false);
       setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
-      loadAppointments();
+
+      // Load appointments IN BACKGROUND (isRefreshing = true) to prevent full-screen spinner flicker
+      loadAppointments(true);
     } catch (error) {
-      Alert.alert('Error', 'Failed to save event');
+      console.error('Save error:', error);
+      Alert.alert('Error', 'Failed to save event. Check your connection.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -576,8 +630,16 @@ export default function ScheduleScreen({ navigation }) {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEvent}>
-                <Text style={styles.saveBtnText}>Save Event</Text>
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                onPress={handleSaveEvent}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save Event</Text>
+                )}
               </TouchableOpacity>
             </ScrollView>
 

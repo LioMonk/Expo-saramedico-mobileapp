@@ -27,10 +27,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 
 
-const REGISTERED_ORGANIZATIONS = [
-  'Apollo Hospital', 'Fortis Healthcare', 'Max Healthcare',
-  'AIIMS', 'Manipal Hospitals', 'Columbia Asia'
-];
+
 
 export default function SignUpScreen({ navigation }) {
   const [organizationName, setOrganizationName] = useState('');
@@ -46,9 +43,7 @@ export default function SignUpScreen({ navigation }) {
   const [isChecked, setIsChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showRolePicker, setShowRolePicker] = useState(false);
-  const [showOrgPicker, setShowOrgPicker] = useState(false);
-  const [isOtherOrg, setIsOtherOrg] = useState(false);
-  const [customOrgName, setCustomOrgName] = useState('');
+
 
   // Error states
   const [errors, setErrors] = useState({});
@@ -350,67 +345,18 @@ export default function SignUpScreen({ navigation }) {
           {/* Doctor-specific fields removed as per request (specialty, license number) */}
 
           {(role === 'hospital' || role === 'doctor') && (
-            <View style={{ zIndex: 1000 }}>
+            <View>
               <Text style={styles.label}>
                 {role === 'hospital' ? 'Organization Name *' : 'Organization Name (Optional)'}
               </Text>
-
-              <TouchableOpacity
-                style={[styles.pickerButton, errors.organizationName && { borderColor: COLORS.error }]}
-                onPress={() => setShowOrgPicker(!showOrgPicker)}
-              >
-                <Ionicons name="business-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
-                <Text style={[styles.pickerButtonText, !organizationName && { color: '#999' }]}>
-                  {organizationName || 'Select Organization'}
-                </Text>
-                <Ionicons name={showOrgPicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
-              </TouchableOpacity>
-
-              {showOrgPicker && (
-                <View style={styles.pickerDropdown}>
-                  <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 200 }}>
-                    {REGISTERED_ORGANIZATIONS.map((org) => (
-                      <TouchableOpacity
-                        key={org}
-                        style={styles.pickerItem}
-                        onPress={() => {
-                          setOrganizationName(org);
-                          setIsOtherOrg(false);
-                          setShowOrgPicker(false);
-                        }}
-                      >
-                        <Text style={styles.pickerItemText}>{org}</Text>
-                      </TouchableOpacity>
-                    ))}
-                    <TouchableOpacity
-                      style={[styles.pickerItem, { borderBottomWidth: 0, backgroundColor: '#f9f9f9' }]}
-                      onPress={() => {
-                        setOrganizationName('');
-                        setIsOtherOrg(true);
-                        setShowOrgPicker(false);
-                      }}
-                    >
-                      <Text style={[styles.pickerItemText, { fontWeight: '600', color: COLORS.primary }]}>
-                        + Other / Custom
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
-              )}
-
-              {isOtherOrg && (
-                <View style={{ marginTop: 10 }}>
-                  <CustomInput
-                    placeholder="Enter Organization Name"
-                    icon="business-outline"
-                    value={organizationName}
-                    onChangeText={(text) => setOrganizationName(text)}
-                    error={errors.organizationName}
-                    accessibilityLabel="Custom organization name input"
-                  />
-                </View>
-              )}
-
+              <CustomInput
+                placeholder="Enter Hospital/Organization Name"
+                icon="business-outline"
+                value={organizationName}
+                onChangeText={setOrganizationName}
+                error={errors.organizationName}
+                accessibilityLabel="Organization name input"
+              />
               {errors.organizationName && <Text style={styles.errorText}>{errors.organizationName}</Text>}
             </View>
           )}

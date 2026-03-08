@@ -21,10 +21,7 @@ export default function HospitalCreateDoctorScreen({ route, navigation }) {
     const { department } = route.params || {};
     const [loading, setLoading] = useState(false);
 
-    // Department dropdown state
-    const [departments, setDepartments] = useState([]);
-    const [showDeptModal, setShowDeptModal] = useState(false);
-    const [loadingDeps, setLoadingDeps] = useState(true);
+
 
     const [formData, setFormData] = useState({
         email: '',
@@ -35,21 +32,7 @@ export default function HospitalCreateDoctorScreen({ route, navigation }) {
         license_number: ''
     });
 
-    useEffect(() => {
-        const fetchDepartments = async () => {
-            try {
-                const response = await hospitalAPI.getDepartments();
-                setDepartments(response.data?.departments || []);
-            } catch (err) {
-                console.error("Failed to load departments:", err);
-                // Fallback basic departments if offline or error
-                setDepartments(['Cardiology', 'Neurology', 'Orthopedics', 'Pediatrics', 'General Surgery', 'Emergency', 'Dermatology']);
-            } finally {
-                setLoadingDeps(false);
-            }
-        };
-        fetchDepartments();
-    }, []);
+
 
     const handleCreate = async () => {
         // Validation
@@ -123,21 +106,19 @@ export default function HospitalCreateDoctorScreen({ route, navigation }) {
                             {renderInput('Official Email', 'email', 'doctor@hospital.com', 'mail-outline')}
                             {renderInput('Initial Password', 'password', 'SecurePassword123!', 'lock-closed-outline', true)}
 
-                            {/* Department Dropdown */}
+                            {/* Department Input */}
                             <View style={styles.inputContainer}>
                                 <Text style={styles.inputLabel}>Department</Text>
-                                <TouchableOpacity
-                                    style={styles.inputWrapper}
-                                    onPress={() => setShowDeptModal(true)}
-                                >
+                                <View style={styles.inputWrapper}>
                                     <Ionicons name="medical-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                                    <View style={{ flex: 1, justifyContent: 'center' }}>
-                                        <Text style={[styles.input, { color: formData.department ? '#1E293B' : '#94A3B8', marginTop: Platform.OS === 'ios' ? 0 : 0 }]}>
-                                            {formData.department || 'Select Department'}
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="chevron-down" size={20} color="#94A3B8" />
-                                </TouchableOpacity>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.department}
+                                        onChangeText={(val) => setFormData(prev => ({ ...prev, department: val }))}
+                                        placeholder="e.g. Cardiology"
+                                        placeholderTextColor="#94A3B8"
+                                    />
+                                </View>
                             </View>
 
                             {renderInput('Department Role', 'department_role', 'e.g. Head of Unit', 'shield-checkmark-outline')}
@@ -163,48 +144,7 @@ export default function HospitalCreateDoctorScreen({ route, navigation }) {
                 </View>
             </KeyboardAvoidingView>
 
-            {/* Department Modal */}
-            <Modal visible={showDeptModal} transparent animationType="fade" onRequestClose={() => setShowDeptModal(false)}>
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDeptModal(false)}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select Department</Text>
-                            <TouchableOpacity onPress={() => setShowDeptModal(false)}>
-                                <Ionicons name="close" size={24} color="#64748B" />
-                            </TouchableOpacity>
-                        </View>
-                        {loadingDeps ? (
-                            <ActivityIndicator size="small" color={COLORS.primary} style={{ padding: 20 }} />
-                        ) : (
-                            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
-                                {departments.map((dep, index) => (
-                                    <TouchableOpacity
-                                        key={index}
-                                        style={styles.modalItem}
-                                        onPress={() => {
-                                            setFormData(prev => ({ ...prev, department: dep }));
-                                            setShowDeptModal(false);
-                                        }}
-                                    >
-                                        <Text style={[
-                                            styles.modalItemText,
-                                            formData.department === dep && { color: COLORS.primary, fontWeight: '700' }
-                                        ]}>
-                                            {dep}
-                                        </Text>
-                                        {formData.department === dep && (
-                                            <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
-                                {departments.length === 0 && (
-                                    <Text style={{ textAlign: 'center', color: '#94A3B8', padding: 20 }}>No departments found</Text>
-                                )}
-                            </ScrollView>
-                        )}
-                    </View>
-                </TouchableOpacity>
-            </Modal>
+
         </SafeAreaView>
     );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -61,6 +61,37 @@ export default function HospitalNotificationsScreen({ navigation }) {
         loadNotifications(true);
     };
 
+    const clearAllNotifications = () => {
+        if (notifications.length === 0) return;
+
+        Alert.alert(
+            'Clear All',
+            'Are you sure you want to delete all alerts? This action cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Clear All',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            const deletePromises = notifications
+                                .filter(n => n.id)
+                                .map(n => notificationAPI.deleteNotification(n.id));
+                            await Promise.all(deletePromises);
+                            setNotifications([]);
+                        } catch (error) {
+                            console.error('Clear all failed:', error);
+                            await loadNotifications();
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -68,7 +99,9 @@ export default function HospitalNotificationsScreen({ navigation }) {
                     <Ionicons name="arrow-back" size={24} color={PALETTE.text} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Hospital Alerts</Text>
-                <View style={{ width: 24 }} />
+                <TouchableOpacity onPress={clearAllNotifications} disabled={notifications.length === 0}>
+                    <Text style={[styles.clearBtn, notifications.length === 0 && { opacity: 0.5 }]}>Clear All</Text>
+                </TouchableOpacity>
             </View>
 
             {loading && !refreshing ? (
@@ -116,6 +149,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: PALETTE.bg },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: PALETTE.border },
     headerTitle: { fontSize: 18, fontWeight: '800', color: PALETTE.text },
+    clearBtn: { fontSize: 14, fontWeight: '700', color: PALETTE.blue },
     scroll: { flex: 1, padding: 15 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     card: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderColor: PALETTE.border },

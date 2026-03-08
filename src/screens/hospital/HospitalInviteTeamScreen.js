@@ -64,26 +64,43 @@ export default function HospitalInviteTeamScreen({ navigation }) {
             if (upperRole.includes('ADMIN')) backendRole = 'ADMINISTRATOR';
             if (upperRole.includes('PATIENT')) backendRole = 'PATIENT';
 
+            // Ensure we have a valid org ID before proceeding
+            let currentOrgId = orgId;
+            if (!currentOrgId) {
+                const orgRes = await hospitalAPI.getOrganization();
+                currentOrgId = orgRes.data?.id;
+            }
+
             const payload = {
-                email,
+                email: email.trim().toLowerCase(),
                 full_name: fullName.trim(),
                 role: backendRole,
-                department_id: orgId || '00000000-0000-0000-0000-000000000000',
+                department_id: currentOrgId || '00000000-0000-0000-0000-000000000000',
                 department_role: selectedRole || 'Physician',
             };
 
             await teamAPI.inviteTeamMember(payload);
 
+            // If it's a patient, also trigger an access request so they definitely get an in-app notification
+            if (backendRole === 'PATIENT') {
+                try {
+                    await permissionsAPI.requestAccess({
+                        patient_email: email.trim().toLowerCase(),
+                        reason: `Hospital team invitation from ${fullName}`
+                    });
+                } catch (e) { console.log('Silent skip access request notification'); }
+            }
+
             Alert.alert(
-                'Invitation Sent!',
-                `An invitation has been sent to ${email}`,
+                'Success!',
+                `An invitation and system notification have been sent to ${email}. They will appear in your team list as 'Pending' until they accept.`,
                 [
-                    { text: 'OK', onPress: () => navigation.goBack() }
+                    { text: 'Understood', onPress: () => navigation.goBack() }
                 ]
             );
         } catch (error) {
             console.error('Invite error:', error);
-            const errorMessage = error.response?.data?.detail || 'Failed to send invitation';
+            const errorMessage = error.response?.data?.detail || 'Failed to send invitation. Please check your internet connection.';
             Alert.alert('Error', errorMessage);
         } finally {
             setLoading(false);

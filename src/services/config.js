@@ -40,9 +40,14 @@ const getBaseUrl = () => {
         console.log('🌐 [API Config] Using AWS Deployed API');
     } else {
         // Use local development API
-        // NOTE: We now use 'adb reverse' for Android, so 'localhost' works perfectly.
-        // This is REQUIRED for MinIO presigned URLs to have matching signatures.
-        console.log('💻 [API Config] Using Local Development API (Localhost Bridge)');
+        // For Android, we prefer 10.0.2.2 as its computer alias if adb reverse hasn't been run.
+        // However, 'adb reverse' is still better for MinIO signatures. 
+        if (Platform.OS === 'android' && localApiHost === 'localhost') {
+            console.log('📱 [API Config] Detected Android: Using 10.0.2.2 as host alias');
+            localApiHost = '10.0.2.2';
+        } else {
+            console.log('💻 [API Config] Using Local Development API (Localhost Bridge)');
+        }
         baseUrl = `http://${localApiHost}:${localApiPort}/api/v1`;
     }
 

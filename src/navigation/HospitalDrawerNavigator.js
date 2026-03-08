@@ -1,15 +1,15 @@
-import React from 'react';
-import { createDrawerNavigator } from '@react-navigation/drawer';
+import React, { useState } from 'react';
+import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
-import { TouchableOpacity, StyleSheet, View } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { TouchableOpacity, StyleSheet, View, Text } from 'react-native';
+import { useNavigation, DrawerActions, CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import SignOutModal from '../components/SignOutModal';
 
 // Screens & Navigators
 import HospitalTabNavigator from './HospitalTabNavigator';
 import HospitalDepartmentsScreen from '../screens/hospital/HospitalDepartmentsScreen';
-
-// Custom Drawer Layout can be implemented if needed, but for now we rely on Native Drawer
 
 const Drawer = createDrawerNavigator();
 
@@ -33,10 +33,70 @@ const HeaderRight = () => {
     );
 };
 
+const CustomDrawerContent = (props) => {
+    const [showSignOut, setShowSignOut] = useState(false);
+    const navigation = props.navigation;
+
+    const handleNavigation = (screenName) => {
+        navigation.dispatch(DrawerActions.closeDrawer());
+        if (screenName) navigation.navigate(screenName);
+    };
+
+    const confirmSignOut = async () => {
+        setShowSignOut(false);
+        await AsyncStorage.clear();
+        navigation.dispatch(
+            CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Auth' }],
+            })
+        );
+    };
+
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.drawerHeader}>
+                <View style={styles.headerIcon}>
+                    <Ionicons name="business" size={32} color="#FFF" />
+                </View>
+                <Text style={styles.hospitalText}>Hospital Panel</Text>
+            </View>
+
+            <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: 0 }}>
+                {/* Standard Home/Dashboard link */}
+                <DrawerItemList {...props} />
+
+                {/* Manual Departments link to ensure it's the exact same screen/stack as Dashboard */}
+                <TouchableOpacity
+                    style={styles.manualMenuItem}
+                    onPress={() => handleNavigation('HospitalDepartmentsScreen')}
+                >
+                    <Ionicons name="grid-outline" size={22} color="#333" />
+                    <Text style={styles.manualMenuText}>Departments</Text>
+                </TouchableOpacity>
+            </DrawerContentScrollView>
+
+            <View style={styles.drawerFooter}>
+                <TouchableOpacity style={styles.signOutButton} onPress={() => setShowSignOut(true)}>
+                    <Ionicons name="log-out-outline" size={22} color="#FF3B30" />
+                    <Text style={styles.signOutText}>Sign Out</Text>
+                </TouchableOpacity>
+            </View>
+
+            <SignOutModal
+                visible={showSignOut}
+                onCancel={() => setShowSignOut(false)}
+                onConfirm={confirmSignOut}
+            />
+        </View>
+    );
+};
+
 export default function HospitalDrawerNavigator() {
     return (
         <Drawer.Navigator
             initialRouteName="HospitalHome"
+            drawerContent={(props) => <CustomDrawerContent {...props} />}
             screenOptions={{
                 headerShown: true,
                 headerStyle: {
@@ -67,12 +127,13 @@ export default function HospitalDrawerNavigator() {
                     drawerIcon: ({ color }) => <Ionicons name="home-outline" size={22} color={color} />
                 }}
             />
+            {/* Departments screen is handled manually in content to match Dashboard navigation */}
             <Drawer.Screen
-                name="Departments"
+                name="DepartmentsHidden"
                 component={HospitalDepartmentsScreen}
                 options={{
-                    title: 'Departments',
-                    drawerIcon: ({ color }) => <Ionicons name="grid-outline" size={22} color={color} />
+                    drawerItemStyle: { display: 'none' },
+                    headerShown: false
                 }}
             />
         </Drawer.Navigator>
@@ -94,5 +155,56 @@ const styles = StyleSheet.create({
         backgroundColor: '#4CAF50',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    drawerHeader: {
+        backgroundColor: COLORS.primary,
+        padding: 20,
+        paddingTop: 50,
+        paddingBottom: 30,
+        alignItems: 'center',
+    },
+    headerIcon: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    hospitalText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
+    drawerFooter: {
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#F0F0F0',
+        marginBottom: 20,
+    },
+    signOutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+    },
+    signOutText: {
+        marginLeft: 15,
+        fontSize: 15,
+        color: '#FF3B30',
+        fontWeight: '600',
+    },
+    manualMenuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        marginTop: 5,
+    },
+    manualMenuText: {
+        fontSize: 15,
+        marginLeft: 26,
+        color: '#333',
+        fontWeight: '500',
     }
 });

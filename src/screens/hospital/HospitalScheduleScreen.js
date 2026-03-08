@@ -68,11 +68,12 @@ export default function HospitalScheduleScreen({ navigation }) {
 
             // 3. Fetch Events
             const now = new Date();
-            const startStr = new Date(now.getFullYear(), 0, 1).toISOString();
-            const endStr = new Date(now.getFullYear(), 11, 31).toISOString();
+            // Fetch a wider range (past year to next year) to be safe
+            const startStr = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+            const endStr = new Date(now.getFullYear() + 1, 11, 31).toISOString();
 
             const response = await calendarAPI.getOrgEvents(startStr, endStr);
-            const eventsArr = response.data || [];
+            const eventsArr = Array.isArray(response.data) ? response.data : (response.data?.events || []);
 
             // 4. Deduplicate and Transform
             const apptGroups = {};
@@ -82,7 +83,7 @@ export default function HospitalScheduleScreen({ navigation }) {
                 const isAppointment = ev.event_type === 'appointment' || ev.appointment_id;
 
                 if (isAppointment) {
-                    const aid = ev.appointment_id;
+                    const aid = ev.appointment_id || ev.id;
                     if (!apptGroups[aid]) {
                         apptGroups[aid] = {
                             ...ev,
@@ -94,11 +95,13 @@ export default function HospitalScheduleScreen({ navigation }) {
                     }
                     if (staffMap[ev.user_id]) apptGroups[aid].foundDoctor = staffMap[ev.user_id];
                     else if (patientMap[ev.user_id]) apptGroups[aid].foundPatient = patientMap[ev.user_id];
-                } else if (ev.event_type === 'custom' && hospIds.includes(ev.user_id)) {
+                } else {
+                    // Any non-appointment is treated as a calendar event
                     finalNormalized.push({
                         ...ev,
                         sortDate: new Date(ev.start_time),
                         itemType: 'calendar_event',
+                        title: ev.title || 'Untitled Event'
                     });
                 }
             });
@@ -173,6 +176,8 @@ export default function HospitalScheduleScreen({ navigation }) {
             } else {
                 await calendarAPI.createEvent(payload);
                 Alert.alert('Success', 'Event created');
+                // Auto-select the date of the new event so it shows up in the list immediately
+                setSelectedDate(new Date(eventForm.start_time));
             }
             setShowEventModal(false);
             loadData();

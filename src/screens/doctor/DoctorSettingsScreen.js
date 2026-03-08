@@ -198,8 +198,16 @@ export default function DoctorSettingsScreen({ navigation }) {
                            <TouchableOpacity style={styles.avatarCircle} onPress={handleImagePick}>
                               {profile.avatar_file || profile.avatar_url ? (
                                  <Image
-                                    source={{ uri: profile.avatar_file || profile.avatar_url }}
+                                    source={{
+                                       uri: Platform.OS === 'android' && (profile.avatar_file || profile.avatar_url).includes('107.20')
+                                          ? (profile.avatar_file || profile.avatar_url).replace('107.20.98.130:9010', '10.0.2.2:9010')
+                                          : (profile.avatar_file || profile.avatar_url),
+                                       headers: (profile.avatar_file || profile.avatar_url).includes('107.20') ? { Host: '107.20.98.130:9010' } : {}
+                                    }}
                                     style={{ width: '100%', height: '100%' }}
+                                    onError={(e) => {
+                                       console.error('❌ [Avatar] Image failed to load:', profile.avatar_file || profile.avatar_url);
+                                    }}
                                  />
                               ) : (
                                  <Text style={styles.avatarInitials}>

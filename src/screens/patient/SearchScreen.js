@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,44 +6,90 @@ import { COLORS } from '../../constants/theme';
 import BottomNavBar from '../../components/BottomNavBar';
 import { patientAPI } from '../../services/api';
 
+const TEST_DOCTOR_BLACKLIST = [
+   'soap tester',
+   'sync test',
+   'clinical flow',
+   'test doctor',
+   'medical specialist',
+   'integration test',
+   'notification tester'
+];
+
+const isBlacklisted = (name) => {
+   if (!name) return false;
+   const n = name.toLowerCase();
+   return TEST_DOCTOR_BLACKLIST.some(black => n.includes(black));
+};
+
 export default function SearchScreen({ navigation }) {
    const [searchQuery, setSearchQuery] = useState('');
    const [allDoctors, setAllDoctors] = useState([]);
    const [filteredDoctors, setFilteredDoctors] = useState([]);
+   const [doctorNameMap, setDoctorNameMap] = useState({}); // ID -> Decrypted Name
    const [loading, setLoading] = useState(true);
    const [activeFilter, setActiveFilter] = useState('All');
+   const searchTimeout = useRef(null);
 
    useEffect(() => {
       loadAllDoctors();
    }, []);
 
-   useEffect(() => {
-      filterDoctors();
-   }, [searchQuery, activeFilter, allDoctors]);
-
    const loadAllDoctors = async () => {
       setLoading(true);
       try {
-         // Load all doctors without any query
-         const response = await patientAPI.searchDoctors();
-         let doctorsList = response.data?.results || response.data || [];
+         // 1. Fetch appointments to recover real names from history
+         try {
+            const apptsRes = await patientAPI.getMyAppointments();
+            const appts = apptsRes?.data || [];
+            const nameMap = {};
+            appts.forEach(a => {
+               if (a.doctor_id && a.doctor_name) {
+                  nameMap[a.doctor_id] = a.doctor_name;
+               }
+            });
+            setDoctorNameMap(nameMap);
+         } catch (e) {
+            console.log('[SearchScreen] Failed to fetch appointments for name recovery');
+         }
 
-         // Deduplicate doctors by ID to prevent double entries
-         const uniqueDoctors = [];
+         const allResults = [];
          const seenIds = new Set();
 
-         doctorsList.forEach(doctor => {
-            const docId = doctor.id?.toString();
-            if (docId && !seenIds.has(docId)) {
-               seenIds.add(docId);
-               uniqueDoctors.push(doctor);
-            } else if (!docId) {
-               uniqueDoctors.push(doctor);
-            }
-         });
+         const addUnique = (list) => {
+            if (!Array.isArray(list)) return;
+            list.forEach(d => {
+               const id = d.id?.toString();
+               if (!id || seenIds.has(id)) return;
 
-         setAllDoctors(uniqueDoctors);
-         setFilteredDoctors(uniqueDoctors);
+               // 1. Skip if it's a known test/garbage name
+               const rawName = (d.full_name || d.name || '').trim();
+               if (isBlacklisted(rawName)) return;
+
+               // From /team/staff, we get 'role'. In /doctors/directory, they are all doctors.
+               const role = (d.role || '').toLowerCase();
+               if (role && !role.includes('doctor') && !role.includes('physician') && !role.includes('surgeon')) {
+                  return;
+               }
+
+               allResults.push(d);
+               seenIds.add(id);
+            });
+         };
+
+         // 1. Skip team/staff (403 for patients)
+
+         // 2. Try doctors/directory - global list
+         try {
+            const response = await patientAPI.searchDoctors({});
+            const directoryList = response.data?.results || response.data?.doctors || response.data || [];
+            addUnique(directoryList);
+         } catch (e) {
+            console.log('[SearchScreen] /doctors/directory failed:', e?.message);
+         }
+
+         setAllDoctors(allResults);
+         setFilteredDoctors(allResults);
       } catch (error) {
          console.error('Error loading doctors:', error);
          setAllDoctors([]);
@@ -52,6 +98,13 @@ export default function SearchScreen({ navigation }) {
          setLoading(false);
       }
    };
+
+   // Debounced search: checks backend first, then falls back to local filter
+   useEffect(() => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+      searchTimeout.current = setTimeout(() => filterDoctors(), 350);
+      return () => clearTimeout(searchTimeout.current);
+   }, [searchQuery, activeFilter, allDoctors]);
 
    const filterDoctors = () => {
       let filtered = [...allDoctors];
@@ -69,7 +122,8 @@ export default function SearchScreen({ navigation }) {
          filtered = filtered.filter(doctor => {
             const name = (doctor.full_name || doctor.name || '').toLowerCase();
             const specialty = (doctor.specialty || '').toLowerCase();
-            return name.includes(query) || specialty.includes(query);
+            const email = (doctor.email || '').toLowerCase();
+            return name.includes(query) || specialty.includes(query) || email.includes(query);
          });
       }
 
@@ -151,12 +205,33 @@ export default function SearchScreen({ navigation }) {
                               <View style={styles.textContainer}>
                                  <Text style={styles.itemTitle}>
                                     {(() => {
-                                       let name = doctor.full_name || doctor.name || 'Doctor';
-                                       if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown doctor') name = 'Doctor';
-                                       return name.startsWith('Dr. ') ? name : `Dr. ${name}`;
+                                       let n = (doctor.full_name || doctor.name || '').trim();
+                                       const lowerN = n.toLowerCase();
+                                       const isGarbage = !n || lowerN === 'unknown doctor' || lowerN === 'encrypted' || n.startsWith('gAAAAA');
+
+                                       if (isGarbage) {
+                                          // 1. Try recovery from appointment history
+                                          if (doctorNameMap[doctor.id]) {
+                                             n = doctorNameMap[doctor.id];
+                                          }
+                                          // 2. Try to extract a name from the email (e.g. anurag@...)
+                                          else if (doctor.email) {
+                                             const prefix = doctor.email.split("@")[0];
+                                             const cleanPrefix = prefix.split(".")[0].replace(/[0-9]/g, "");
+                                             n = cleanPrefix.charAt(0).toUpperCase() + cleanPrefix.slice(1);
+                                          } else {
+                                             // 3. Fallback to specialty
+                                             n = doctor.specialty || doctor.department || "Medical Specialist";
+                                          }
+                                       }
+                                       return n.startsWith('Dr. ') ? n : `Dr. ${n}`;
                                     })()}
                                  </Text>
-                                 <Text style={styles.itemSubtitle}>{doctor.specialty || 'General Practice'}</Text>
+                                 <Text style={styles.itemSubtitle}>
+                                    {doctor.specialty || 'General Practice'}
+                                    {doctor.department_role ? ` • ${doctor.department_role}` : ''}
+                                 </Text>
+                                 {doctor.email && <Text style={{ fontSize: 11, color: '#999', marginTop: 2 }}>{doctor.email}</Text>}
                               </View>
                               <Ionicons name="chevron-forward" size={20} color="#999" />
                            </TouchableOpacity>

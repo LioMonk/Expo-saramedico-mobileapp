@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { patientAPI, permissionsAPI, notificationAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function PatientNotificationsScreen({ navigation }) {
     const [notifications, setNotifications] = useState([]);
@@ -98,6 +99,18 @@ export default function PatientNotificationsScreen({ navigation }) {
                 }
             });
 
+            // Filter by cleared date
+            const clearedDateStr = await AsyncStorage.getItem('@cleared_notifications_at');
+            if (clearedDateStr) {
+                const clearedDate = new Date(clearedDateStr);
+                allNotifs = allNotifs.filter(n => {
+                    const notifDate = new Date(n.timestamp);
+                    // If timestamp is invalid or exactly matches the fallback, just show it or fallback to comparison
+                    if (isNaN(notifDate.getTime())) return true;
+                    return notifDate > clearedDate;
+                });
+            }
+
             // Final Sort: Newest First
             allNotifs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             setNotifications(allNotifs);
@@ -176,10 +189,22 @@ export default function PatientNotificationsScreen({ navigation }) {
 
     const handleClearAll = async () => {
         try {
-            await notificationAPI.markAllRead();
-            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-            Alert.alert("Notifications Cleared", "We've marked all notifications as read.");
-        } catch (error) { }
+            // Real backend notifications
+            const backendNotifs = notifications.filter(n => typeof n.id === 'string' && n.id.length > 20 && !n.id.includes('_'));
+
+            // Fire and forget deletions to backend
+            Promise.all(backendNotifs.map(n => notificationAPI.deleteNotification(n.id).catch(() => { })));
+            notificationAPI.markAllRead().catch(() => { });
+
+            // Set timestamp to ignore old synthetic ones on reload
+            const now = new Date().toISOString();
+            await AsyncStorage.setItem('@cleared_notifications_at', now);
+
+            setNotifications([]);
+            Alert.alert("Success", "All notifications have been cleared.");
+        } catch (error) {
+            console.error('Clear all error:', error);
+        }
     };
 
     const handleGrantAccess = async (notif) => {
@@ -264,7 +289,7 @@ export default function PatientNotificationsScreen({ navigation }) {
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Notifications</Text>
-                {notifications.some(n => !n.read) ? (
+                {notifications.length > 0 ? (
                     <TouchableOpacity onPress={handleClearAll}>
                         <Text style={styles.clearAll}>Clear All</Text>
                     </TouchableOpacity>

@@ -20,6 +20,22 @@ import moment from 'moment';
 
 const { width } = Dimensions.get('window');
 
+const TEST_DOCTOR_BLACKLIST = [
+  'soap tester',
+  'sync test',
+  'clinical flow',
+  'test doctor',
+  'medical specialist',
+  'integration test',
+  'notification tester'
+];
+
+const isBlacklisted = (name) => {
+  if (!name) return false;
+  const n = name.toLowerCase();
+  return TEST_DOCTOR_BLACKLIST.some(black => n.includes(black));
+};
+
 export default function PatientDashboard({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,26 +67,57 @@ export default function PatientDashboard({ navigation }) {
         patientAPI.getDoctors().catch(() => ({ data: { results: [] } }))
       ]);
 
-      const doctorsList = doctorsRes.data?.results || doctorsRes.data || [];
+      const directoryList = doctorsRes.data?.results || doctorsRes.data || [];
+      const appointments = aptRes.data || [];
+
       const doctorsMap = {};
-      if (Array.isArray(doctorsList)) {
-        doctorsList.forEach(d => {
-          if (d.id) {
-            let dName = d.name || d.full_name;
-            // Filter out placeholder names from directory as well
-            if (dName && (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor')) {
-              dName = null;
-            }
-            if (dName) doctorsMap[d.id.toString()] = dName;
+      const registerDoctor = (d) => {
+        if (!d.id) return;
+        let dName = (d.name || d.full_name || d.doctor_name || '').trim();
+
+        // 1. Skip if it's a known test/garbage name
+        if (isBlacklisted(dName)) return;
+
+        const lowerName = dName.toLowerCase();
+
+        // Filter out encryption placeholders - if it's garbage, skip it (prefer real names)
+        if (!dName || lowerName === 'encrypted' || lowerName === 'unknown doctor' || dName.startsWith('gAAAAA')) {
+          if (d.email) {
+            const prefix = d.email.split('@')[0];
+            const cleanPrefix = prefix.split('.')[0].replace(/[0-9]/g, '');
+            dName = cleanPrefix.charAt(0).toUpperCase() + cleanPrefix.slice(1);
+          } else if (d.doctor_name && !isBlacklisted(d.doctor_name)) {
+            dName = d.doctor_name;
+          } else {
+            dName = null;
           }
-        });
-      }
+        }
+
+        if (dName) {
+          // Ensure prefix
+          const finalName = dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
+          doctorsMap[d.id.toString()] = finalName;
+        }
+      };
+
+      // 1. Register from directory (may have encrypted names)
+      directoryList.forEach(registerDoctor);
+
+      // 2. Register from appointments (often has better Decrypted names from backend!)
+      appointments.forEach(a => {
+        if (a.doctor_id) {
+          registerDoctor({
+            id: a.doctor_id,
+            name: a.doctor_name,
+            full_name: a.doctor_name
+          });
+        }
+      });
 
       const fullName = profileRes.data?.name || profileRes.data?.full_name || 'Patient';
       setPatientName(fullName);
       setPatientAvatar(profileRes.data?.avatar_url || null);
 
-      const appointments = aptRes.data || [];
       const now = new Date();
 
       const upcoming = appointments
@@ -360,12 +407,11 @@ export default function PatientDashboard({ navigation }) {
           ))}
         </ScrollView>
 
-        {/* Action Grid - Compact & Colorful */}
         <View style={styles.quickActionBox}>
           <Text style={styles.sectionTitle}>Main Actions</Text>
           <View style={styles.actionGridRow}>
             {[
-              { id: 'book', label: 'Book Visit', icon: 'calendar-clear', color: '#4F46E5', bg: '#EEF2FF', screen: 'Appointments' },
+              { id: 'find', label: 'Find Doctor', icon: 'search', color: '#4F46E5', bg: '#EEF2FF', screen: 'Doctors' },
               { id: 'records', label: 'My Records', icon: 'document-attach', color: '#7C3AED', bg: '#F5F3FF', screen: 'Medical Records' },
               { id: 'faq', label: 'Help Center', icon: 'help-buoy', color: '#475569', bg: '#F8FAFC', screen: 'FAQScreen' }
             ].map((action) => (

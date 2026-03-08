@@ -198,13 +198,7 @@ export default function HospitalDashboard({ navigation }) {
                         <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())} style={styles.iconBox}>
                             <Ionicons name="grid" size={20} color={PALETTE.blue} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.avatarNode} onPress={() => {
-                            if (orgId === 'admin') {
-                                navigation.navigate('HospitalSettingsScreen');
-                            } else {
-                                Alert.alert('Access Denied', 'Only administrators can access system settings.');
-                            }
-                        }}>
+                        <TouchableOpacity style={styles.avatarNode} onPress={() => navigation.navigate('Settings')}>
                             {hospitalAvatar ? (
                                 <Image source={{ uri: hospitalAvatar }} style={styles.avatarImg} />
                             ) : (

@@ -154,74 +154,46 @@ export const authAPI = {
   refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken }),
 
   // POST /users/me/avatar
-  uploadAvatar: async (imageUri) => {
-    // Determine filename and type more robustly
-    let filename = imageUri.split('/').pop() || `avatar_${Date.now()}.jpg`;
-
-    // Ensure it has an extension
-    if (!filename.includes('.')) {
-      filename += '.jpg';
+  uploadAvatar: async (fileOrUri) => {
+    let uri, name, type;
+    if (typeof fileOrUri === 'string') {
+      uri = fileOrUri;
+      name = uri.split('/').pop() || `avatar_${Date.now()}.jpg`;
+      if (!name.includes('.')) name += '.jpg';
+      const match = /\.(\w+)$/.exec(name);
+      type = match ? `image/${match[1] === 'jpg' ? 'jpeg' : match[1]}` : `image/jpeg`;
+    } else {
+      uri = fileOrUri.uri;
+      name = fileOrUri.name || fileOrUri.fileName || `avatar_${Date.now()}.jpg`;
+      type = fileOrUri.mimeType || fileOrUri.type || 'image/jpeg';
     }
 
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1] === 'jpg' ? 'jpeg' : match[1]}` : `image/jpeg`;
-
     const formData = new FormData();
-    // Special handling for Android to ensure the URI format works with React Native bridge
-    const resolvedUri = Platform.OS === 'android' ? imageUri : imageUri.replace('file://', '');
+    // React Native's FormData often prefers the direct `file://` URI on Android
+    // exactly like it does in patientAPI.uploadMedicalHistory
+    const resolvedUri = Platform.OS === 'ios' ? uri.replace('file://', '') : uri;
 
     formData.append('file', {
       uri: resolvedUri,
-      name: filename,
-      type: type
+      name: name,
+      type: type || 'application/octet-stream'
     });
 
-    const token = await AsyncStorage.getItem(TOKEN_CONFIG.ACCESS_TOKEN_KEY);
-
     try {
-      const uploadUrl = `${API_CONFIG.BASE_URL}/users/me/avatar`;
-      console.log(`📤 [Avatar Upload] Sending to: ${uploadUrl}`);
-      console.log(`📋 [Avatar Upload] File: ${filename}, MIME: ${type}`);
-      console.log(`🔗 [Avatar Upload] URI: ${resolvedUri}`);
-
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
+      const token = await AsyncStorage.getItem(TOKEN_CONFIG.ACCESS_TOKEN_KEY);
+      const config = {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          // Do NOT set Content-Type; the fetch implementation on the native side 
-          // will compute the multipart boundary based on the FormData body.
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const status = response.status;
-        let detail = `Server error (${status})`;
-        try {
-          const errorData = await response.json();
-          detail = errorData.detail || detail;
-        } catch (e) {
-          // If body is not JSON, try text
-          try {
-            detail = await response.text() || detail;
-          } catch (textErr) {
-            detail = `Server returned ${status} but response body could not be read.`;
-          }
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}` // Provide explicit config for multipart
         }
-        console.error('[Avatar Upload] Server Error:', status, detail);
-        throw new Error(detail);
-      }
+      };
 
-      const data = await response.json();
-      console.log('✅ [Avatar Upload] Success:', data.message || 'Updated');
-      return fixUserUrls(data);
+      console.log(`📤 [Avatar Upload] Sending file: ${name} to /users/me/avatar`);
+      const response = await api.post('/users/me/avatar', formData, config);
+      console.log('✅ [Avatar Upload] Success:', response.data.message || 'Updated');
+      return fixUserUrls(response.data);
     } catch (error) {
-      // Catch specific network errors
-      if (error.message === 'Network request failed') {
-        console.error('[Avatar Upload] Network error reached. Possible causes: wrong IP (localhost vs 10.0.2.2), missing file permissions, or cleartext blocked.');
-      }
-      console.error('[Avatar Upload] Request error:', error.message);
+      console.error('❌ [Avatar Upload] Error:', error.response?.data || error.message);
       throw error;
     }
   },

@@ -140,6 +140,37 @@ export default function HospitalStaffScreen({ navigation }) {
         }
     };
 
+    const handleRemoveStaff = (member) => {
+        Alert.alert(
+            "Remove Staff member",
+            `Are you sure you want to remove ${member.name}? This action cannot be undone.`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Remove",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            await teamAPI.removeTeamMember(member.id);
+                            Alert.alert("Success", "Staff member removed successfully.");
+                            loadStaff();
+                        } catch (err) {
+                            console.log('Remove staff error:', err);
+                            const detail = err.response?.data?.detail;
+                            const msg = Array.isArray(detail) ? detail.map(d => d.msg).join('\n') : (detail || 'Permission denied. Hospital administrators may need higher privileges for this action.');
+                            Alert.alert("Removal Failed", msg);
+                            // Refresh anyway in case it was partially successful or state is out of sync
+                            loadStaff();
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const filtered = staff.filter(s => {
         const q = search.toLowerCase();
         const textMatch = (s.name || '').toLowerCase().includes(q) ||
@@ -147,8 +178,14 @@ export default function HospitalStaffScreen({ navigation }) {
             (s.email || '').toLowerCase().includes(q) ||
             (s.specialty || '').toLowerCase().includes(q);
 
-        if (filterTab === 'Active') return textMatch && s.status === 'Active';
-        if (filterTab === 'Inactive') return textMatch && s.status !== 'Active';
+        if (filterTab === 'Active') {
+            return textMatch && (s.status?.toLowerCase() === 'active' || s.status?.toLowerCase() === 'accepted' || s.is_active === true);
+        }
+        if (filterTab === 'Inactive') {
+            const status = s.status?.toLowerCase();
+            const isActive = status === 'active' || status === 'accepted' || s.is_active === true;
+            return textMatch && !isActive;
+        }
         return textMatch;
     });
 
@@ -195,7 +232,10 @@ export default function HospitalStaffScreen({ navigation }) {
                 </View>
                 <View style={styles.metricCard}>
                     <Text style={[styles.metricValue, { color: PALETTE.green }]}>
-                        {staff.filter(s => s.status?.toLowerCase() === 'active').length}
+                        {staff.filter(s => {
+                            const status = s.status?.toLowerCase();
+                            return status === 'active' || status === 'accepted' || s.is_active === true;
+                        }).length}
                     </Text>
                     <Text style={styles.metricLabel}>Active</Text>
                 </View>
@@ -270,19 +310,51 @@ export default function HospitalStaffScreen({ navigation }) {
                                 <View style={[styles.roleBadge, { backgroundColor: rc.bg }]}>
                                     <Text style={[styles.roleText, { color: rc.color }]}>{member.role}</Text>
                                 </View>
-                                <View style={[styles.statusBadge, { backgroundColor: member.status === 'Active' ? PALETTE.greenLight : PALETTE.amberLight }]}>
-                                    <Text style={[styles.statusText, { color: member.status === 'Active' ? PALETTE.green : PALETTE.amber }]}>
-                                        {member.status || 'Active'}
+                                <View style={[
+                                    styles.statusBadge,
+                                    {
+                                        backgroundColor: (() => {
+                                            const status = member.status?.toLowerCase();
+                                            const isActive = status === 'active' || status === 'accepted' || status === 'approved' || member.is_active === true;
+                                            return isActive ? PALETTE.greenLight : PALETTE.amberLight;
+                                        })()
+                                    }
+                                ]}>
+                                    <Text style={[
+                                        styles.statusText,
+                                        {
+                                            color: (() => {
+                                                const status = member.status?.toLowerCase();
+                                                const isActive = status === 'active' || status === 'accepted' || status === 'approved' || member.is_active === true;
+                                                return isActive ? PALETTE.green : PALETTE.amber;
+                                            })()
+                                        }
+                                    ]}>
+                                        {(() => {
+                                            const status = member.status?.toLowerCase();
+                                            const isActive = status === 'active' || status === 'accepted' || status === 'approved' || member.is_active === true;
+                                            if (isActive) return 'Active';
+                                            if (status === 'invited') return 'Pending';
+                                            return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Pending';
+                                        })()}
                                     </Text>
                                 </View>
-                                {['doctor', 'physician'].includes((member.role || '').toLowerCase()) && (
+                                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                                    {['doctor', 'physician'].includes((member.role || '').toLowerCase()) && (
+                                        <TouchableOpacity
+                                            style={styles.manageBtn}
+                                            onPress={() => navigation.navigate('HospitalEditDoctorScreen', { doctor: member })}
+                                        >
+                                            <Text style={styles.manageBtnText}>Manage</Text>
+                                        </TouchableOpacity>
+                                    )}
                                     <TouchableOpacity
-                                        style={styles.manageBtn}
-                                        onPress={() => navigation.navigate('HospitalEditDoctorScreen', { doctor: member })}
+                                        style={[styles.manageBtn, { borderColor: PALETTE.red + '40', backgroundColor: PALETTE.redLight, paddingHorizontal: 8 }]}
+                                        onPress={() => handleRemoveStaff(member)}
                                     >
-                                        <Text style={styles.manageBtnText}>Manage</Text>
+                                        <Ionicons name="trash-outline" size={14} color={PALETTE.red} />
                                     </TouchableOpacity>
-                                )}
+                                </View>
                             </View>
                         </View>
                     );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity,
-  Switch, Modal, TextInput, ActivityIndicator, Alert, Image
+  Switch, Modal, TextInput, ActivityIndicator, Alert, Image, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../constants/theme';
 import SignOutModal from '../../components/SignOutModal';
 import { authAPI, patientAPI } from '../../services/api';
+import { fixUrl } from '../../services/urlFixer';
 import { TOKEN_CONFIG, API_CONFIG } from '../../services/config';
 import { SvgUri } from 'react-native-svg';
 
@@ -90,15 +91,16 @@ export default function PatientSettingsScreen({ navigation }) {
         const file = result.assets ? result.assets[0] : result;
         const imageUri = file.uri;
 
-        // Optimistic update
-        setProfile(prev => ({ ...prev, avatar_url: imageUri }));
+        // Optimistic update using local file URI so it doesn't immediately fetch from cloud
+        setProfile(prev => ({ ...prev, avatar_file: imageUri, avatar_url: imageUri }));
 
         try {
-          const uploadRes = await authAPI.uploadAvatar(imageUri);
-          const serverUrl = uploadRes.preview_url || uploadRes.avatar_url || uploadRes.url;
+          const uploadRes = await authAPI.uploadAvatar(file);
+          let serverUrl = uploadRes.preview_url || uploadRes.avatar_url || uploadRes.url;
 
           if (serverUrl) {
-            setProfile(prev => ({ ...prev, avatar_url: serverUrl }));
+            serverUrl = fixUrl(serverUrl);
+            setProfile(prev => ({ ...prev, avatar_url: serverUrl, avatar_file: null }));
 
             // Save server URL locally for persistence using standardized key
             const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
@@ -108,10 +110,11 @@ export default function PatientSettingsScreen({ navigation }) {
               parsedUserData.avatar = serverUrl;
               await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUserData));
             }
+            Alert.alert('Success', 'Profile picture updated successfully');
           }
         } catch (err) {
           console.error('Avatar upload error:', err);
-          Alert.alert('Upload Error', 'Failed to save profile picture.');
+          Alert.alert('Upload Error', 'Failed to save profile picture. Please try again.');
         }
       }
     } catch (error) {
@@ -155,31 +158,36 @@ export default function PatientSettingsScreen({ navigation }) {
           {/* Profile Header */}
           <View style={styles.profileHeader}>
             <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePick}>
-              {profile?.avatar_url ? (
-                profile.avatar_url.toLowerCase().includes('.svg') ? (
+              {profile?.avatar_url || profile?.avatar_file ? (
+                (profile.avatar_file || profile.avatar_url).toLowerCase().includes('.svg') ? (
                   <View style={styles.avatar}>
                     <SvgUri
                       width="100%"
                       height="100%"
-                      uri={profile.avatar_url}
+                      uri={profile.avatar_file || profile.avatar_url}
                       onError={(e) => {
-                        console.error('❌ [Avatar] SVG failed to load:', profile.avatar_url);
+                        console.error('❌ [Avatar] SVG failed to load:', profile.avatar_file || profile.avatar_url);
                       }}
                       onLoad={() => {
-                        console.log('✅ [Avatar] SVG loaded successfully:', profile.avatar_url);
+                        console.log('✅ [Avatar] SVG loaded successfully:', profile.avatar_file || profile.avatar_url);
                       }}
                     />
                   </View>
                 ) : (
                   <Image
-                    source={{ uri: profile.avatar_url }}
+                    source={{
+                      uri: Platform.OS === 'android' && (profile.avatar_file || profile.avatar_url).includes('107.20')
+                        ? (profile.avatar_file || profile.avatar_url).replace('107.20.98.130:9010', '10.0.2.2:9010')
+                        : (profile.avatar_file || profile.avatar_url),
+                      headers: (profile.avatar_file || profile.avatar_url).includes('107.20') ? { Host: '107.20.98.130:9010' } : {}
+                    }}
                     style={styles.avatar}
                     resizeMode="cover"
                     onError={(e) => {
-                      console.error('❌ [Avatar] Image failed to load:', profile.avatar_url);
+                      console.error('❌ [Avatar] Image failed to load:', profile.avatar_file || profile.avatar_url);
                     }}
                     onLoad={() => {
-                      console.log('✅ [Avatar] Image loaded successfully:', profile.avatar_url);
+                      console.log('✅ [Avatar] Image loaded successfully:', profile.avatar_file || profile.avatar_url);
                     }}
                   />
                 )

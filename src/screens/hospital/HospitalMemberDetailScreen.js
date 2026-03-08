@@ -29,7 +29,10 @@ export default function HospitalMemberDetailScreen({ route, navigation }) {
                             await teamAPI.removeTeamMember(member.id);
                             navigation.goBack();
                         } catch (error) {
-                            Alert.alert('Error', 'Failed to remove member');
+                            console.log('Remove member error:', error);
+                            const detail = error.response?.data?.detail;
+                            const msg = Array.isArray(detail) ? detail.map(d => d.msg).join('\n') : (detail || 'Permission denied. Hospital administrators may need higher privileges for this action.');
+                            Alert.alert('Removal Failed', msg);
                         }
                     }
                 }
@@ -77,7 +80,18 @@ export default function HospitalMemberDetailScreen({ route, navigation }) {
                     <View style={styles.infoCard}>
                         <InfoRow label="Email Address" value={member.email} icon="mail-outline" />
                         <InfoRow label="Employee ID" value={member.id?.slice(0, 8)} icon="id-card-outline" />
-                        <InfoRow label="Status" value={member.status === 'active' ? 'Active Account' : 'Pending Invite'} icon="ellipse" />
+                        <InfoRow
+                            label="Status"
+                            value={(() => {
+                                const status = member.status?.toLowerCase();
+                                const isActive = status === 'active' || status === 'accepted' || status === 'approved' || member.is_active === true;
+                                if (isActive) return 'Active Account';
+                                if (status === 'invited') return 'Sent - Waiting for Acceptance';
+                                if (status === 'pending') return 'Profile Pending';
+                                return 'Pending Invite';
+                            })()}
+                            icon="ellipse"
+                        />
                         {member.specialty && (
                             <InfoRow label="Specialty" value={member.specialty} icon="medical-outline" />
                         )}

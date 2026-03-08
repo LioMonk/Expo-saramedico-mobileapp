@@ -254,18 +254,6 @@ export default function HospitalSettingsScreen({ navigation }) {
                 {/* ─── Support & Actions ─── */}
                 <Text style={styles.sectionLabel}>Advanced & Identity</Text>
                 <View style={styles.glassCard}>
-                    <TouchableOpacity style={styles.actionRowItem}>
-                        <Ionicons name="shield-checkmark-outline" size={20} color={PALETTE.text} />
-                        <Text style={styles.actionRowText}>Security & Privacy</Text>
-                        <Ionicons name="chevron-forward" size={16} color={PALETTE.sub} />
-                    </TouchableOpacity>
-                    <View style={styles.fieldDivider} />
-                    <TouchableOpacity style={styles.actionRowItem}>
-                        <Ionicons name="help-circle-outline" size={20} color={PALETTE.text} />
-                        <Text style={styles.actionRowText}>Help Center</Text>
-                        <Ionicons name="chevron-forward" size={16} color={PALETTE.sub} />
-                    </TouchableOpacity>
-                    <View style={styles.fieldDivider} />
                     <TouchableOpacity style={styles.actionRowItem} onPress={() => setShowSignOutModal(true)}>
                         <Ionicons name="log-out-outline" size={20} color={PALETTE.red} />
                         <Text style={[styles.actionRowText, { color: PALETTE.red, fontWeight: '700' }]}>Sign Out</Text>

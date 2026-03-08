@@ -71,14 +71,13 @@ export default function HospitalAppointmentsScreen({ navigation }) {
 
             // 3. Fetch Events for a wide range
             const now = new Date();
-            const startStr = new Date(now.getFullYear(), 0, 1).toISOString();
-            const endStr = new Date(now.getFullYear(), 11, 31).toISOString();
+            const startStr = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+            const endStr = new Date(now.getFullYear() + 1, 11, 31).toISOString();
 
             const response = await calendarAPI.getOrgEvents(startStr, endStr);
-            const eventsArr = response.data || [];
+            const eventsArr = Array.isArray(response.data) ? response.data : (response.data?.events || []);
 
             // 4. Transform, Deduplicate and Filter
-            // For appointments, we group events by ID to combine Doctor+Patient names
             const apptGroups = {};
             const finalNormalized = [];
 
@@ -86,7 +85,7 @@ export default function HospitalAppointmentsScreen({ navigation }) {
                 const isAppointment = ev.event_type === 'appointment' || ev.appointment_id;
 
                 if (isAppointment) {
-                    const aid = ev.appointment_id;
+                    const aid = ev.appointment_id || ev.id;
                     if (!apptGroups[aid]) {
                         apptGroups[aid] = {
                             ...ev,
@@ -96,14 +95,14 @@ export default function HospitalAppointmentsScreen({ navigation }) {
                             sortDate: new Date(ev.start_time)
                         };
                     }
-                    // Try to identify doctor/patient
                     if (staffMap[ev.user_id]) apptGroups[aid].foundDoctor = staffMap[ev.user_id];
                     else if (patientMap[ev.user_id]) apptGroups[aid].foundPatient = patientMap[ev.user_id];
-                } else if (ev.event_type === 'custom' && hospIds.includes(ev.user_id)) {
+                } else {
                     finalNormalized.push({
                         ...ev,
                         sortDate: new Date(ev.start_time),
                         itemType: 'calendar_event',
+                        title: ev.title || 'Untitled Event'
                     });
                 }
             });
@@ -182,6 +181,8 @@ export default function HospitalAppointmentsScreen({ navigation }) {
             } else {
                 await calendarAPI.createEvent(payload);
                 Alert.alert('Success', 'Organizational event created');
+                // Auto-select the date so it shows in the list
+                setSelectedDate(new Date(eventForm.start_time));
             }
             setShowEventModal(false);
             setEventForm({ id: null, title: '', description: '', start_time: new Date(), end_time: new Date(Date.now() + 3600000) });
