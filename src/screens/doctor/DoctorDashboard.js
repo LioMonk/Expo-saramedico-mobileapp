@@ -367,12 +367,27 @@ export default function DoctorDashboard({ navigation }) {
                               </View>
                            </View>
                            <View style={styles.btnRow}>
-                              <TouchableOpacity
-                                 style={styles.startBtn}
-                                 onPress={() => navigation.navigate('DoctorPatientDetailScreen', { patient: appt.patient, patientId: appt.patient_id })}
-                              >
-                                 <Text style={styles.startBtnText}>Start Visit</Text>
-                              </TouchableOpacity>
+                              {(appt.meet_link || appt.meetLink || appt.join_url || appt.joinUrl) ? (
+                                 <TouchableOpacity
+                                    style={[styles.startBtn, { backgroundColor: '#10B981', flex: 1.5 }]}
+                                    onPress={() => navigation.navigate('VideoCallScreen', {
+                                       appointment: appt,
+                                       role: 'doctor'
+                                    })}
+                                 >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                       <Ionicons name="videocam" size={16} color="white" />
+                                       <Text style={styles.startBtnText}>Join Room</Text>
+                                    </View>
+                                 </TouchableOpacity>
+                              ) : (
+                                 <TouchableOpacity
+                                    style={styles.startBtn}
+                                    onPress={() => navigation.navigate('DoctorPatientDetailScreen', { patient: appt.patient, patientId: appt.patient_id })}
+                                 >
+                                    <Text style={styles.startBtnText}>Start Visit</Text>
+                                 </TouchableOpacity>
+                              )}
                               <TouchableOpacity
                                  style={styles.detailsBtn}
                                  onPress={() => navigation.navigate('DoctorQuickUploadScreen', { patient: appt.patient })}

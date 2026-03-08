@@ -1,7 +1,8 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Image } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -40,35 +41,41 @@ export default function App() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator size="large" color="#359AFF" />
+        <Image
+          source={require('./assets/icon_new.png')}
+          style={{ width: '40%', height: '20%' }}
+          resizeMode="contain"
+        />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName={initialRoute}
-          screenOptions={{
-            headerShown: false,
-            // Standard iOS-style slide animation for all screens
-            cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-            gestureEnabled: true,
-            gestureDirection: 'horizontal',
-          }}
-        >
-          {/* 1. Auth Stack  */}
-          <Stack.Screen name="Auth" component={AuthNavigator} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName={initialRoute}
+            screenOptions={{
+              headerShown: false,
+              // Standard iOS-style slide animation for all screens
+              cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+            }}
+          >
+            {/* 1. Auth Stack  */}
+            <Stack.Screen name="Auth" component={AuthNavigator} />
 
-          {/* 2. Role-Based Stacks */}
-          <Stack.Screen name="PatientFlow" component={PatientNavigator} />
-          <Stack.Screen name="DoctorFlow" component={DoctorNavigator} />
-          <Stack.Screen name="AdminFlow" component={AdminNavigator} />
-          <Stack.Screen name="HospitalFlow" component={HospitalNavigator} />
+            {/* 2. Role-Based Stacks */}
+            <Stack.Screen name="PatientFlow" component={PatientNavigator} />
+            <Stack.Screen name="DoctorFlow" component={DoctorNavigator} />
+            <Stack.Screen name="AdminFlow" component={AdminNavigator} />
+            <Stack.Screen name="HospitalFlow" component={HospitalNavigator} />
 
-        </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+          </Stack.Navigator>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

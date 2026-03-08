@@ -36,9 +36,25 @@ export default function DoctorSearchScreen({ navigation }) {
         try {
             // Load all doctors without any query
             const response = await patientAPI.searchDoctors();
-            const doctorsList = response.data?.results || response.data || [];
-            setAllDoctors(doctorsList);
-            setFilteredDoctors(doctorsList);
+            let doctorsList = response.data?.results || response.data || [];
+
+            // Deduplicate doctors by ID to prevent double entries
+            const uniqueDoctors = [];
+            const seenIds = new Set();
+
+            doctorsList.forEach(doctor => {
+                const docId = doctor.id?.toString();
+                if (docId && !seenIds.has(docId)) {
+                    seenIds.add(docId);
+                    uniqueDoctors.push(doctor);
+                } else if (!docId) {
+                    // Fallback for items without ID
+                    uniqueDoctors.push(doctor);
+                }
+            });
+
+            setAllDoctors(uniqueDoctors);
+            setFilteredDoctors(uniqueDoctors);
         } catch (error) {
             console.error('Error loading doctors:', error);
             setAllDoctors([]);
@@ -93,14 +109,14 @@ export default function DoctorSearchScreen({ navigation }) {
                 </Text>
             </View>
             <View style={styles.doctorInfo}>
-                <Text style={styles.doctorName}>
+                <Text style={styles.doctorName} numberOfLines={1}>
                     {(() => {
                         let dName = item.name || item.full_name || 'Doctor';
                         if (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor') dName = 'Doctor';
                         return dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
                     })()}
                 </Text>
-                <Text style={styles.doctorSpecialty}>{item.specialty || 'General Practice'}</Text>
+                <Text style={styles.doctorSpecialty} numberOfLines={1}>{item.specialty || 'General Practice'}</Text>
                 <View style={styles.statusBadge}>
                     <Text style={styles.statusText}>Available</Text>
                 </View>

@@ -7,8 +7,10 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Alert,
-    RefreshControl
+    RefreshControl,
+    Animated
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -114,11 +116,62 @@ export default function PatientNotificationsScreen({ navigation }) {
     const handleMarkAsRead = async (id) => {
         try {
             // Only call backend if it's a real backend notification ID
-            if (typeof id === 'string' && !id.includes('_')) {
+            if (typeof id === 'string' && id.length > 20 && !id.includes('_')) {
                 await notificationAPI.markAsRead(id);
             }
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
         } catch (error) { }
+    };
+
+    const handleNotificationPress = async (notif) => {
+        // 1. Mark as read
+        if (!notif.read) {
+            handleMarkAsRead(notif.id);
+        }
+
+        // 2. Navigation logic
+        const type = notif.type?.toLowerCase();
+        const data = notif.data || {};
+
+        if (type === 'access_requested' || type === 'ai_access_request') {
+            // Stay here, buttons are available
+            return;
+        }
+
+        if (type.includes('appointment')) {
+            if (data.id || data.appointment_id) {
+                navigation.navigate('AppointmentDetail', { id: data.id || data.appointment_id });
+            } else {
+                navigation.navigate('MainDashboard', { screen: 'Appointments' });
+            }
+            return;
+        }
+
+        if (type.includes('consultation')) {
+            const meetingUrl = data.meeting_url || data.action_url || notif.message?.match(/https?:\/\/[^\s]+/)?.[0];
+            if (meetingUrl && meetingUrl.includes('google.com/meet')) {
+                navigation.navigate('VideoCallScreen', { url: meetingUrl });
+            } else if (data.appointment_id || data.id) {
+                navigation.navigate('AppointmentDetail', { id: data.appointment_id || data.id });
+            }
+            return;
+        }
+
+        if (type === 'calendar_event_created' || type.includes('calendar')) {
+            navigation.navigate('MainDashboard', { screen: 'Appointments' });
+            return;
+        }
+    };
+
+    const handleDeleteNotification = async (id) => {
+        try {
+            if (typeof id === 'string' && id.length > 20 && !id.includes('_')) {
+                await notificationAPI.deleteNotification(id);
+            }
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        } catch (error) {
+            console.error('Delete notification error:', error);
+        }
     };
 
     const handleClearAll = async () => {
@@ -131,34 +184,62 @@ export default function PatientNotificationsScreen({ navigation }) {
 
     const handleGrantAccess = async (notif) => {
         try {
-            await permissionsAPI.grantDoctorAccess({
-                doctor_id: notif.data.doctor_id,
-                ai_access_permission: true,
-                access_level: 'read_analyze',
-                expiry_days: 90
-            });
+            setLoading(true);
+            const id = notif.id;
+            if (typeof id === 'string' && id.length > 20 && !id.includes('_')) {
+                // Real backend notification
+                await notificationAPI.approveAccess(id);
+            } else {
+                // Synthetic request (old fallback)
+                await permissionsAPI.grantDoctorAccess({
+                    doctor_id: notif.data.doctor_id,
+                    ai_access_permission: true,
+                    access_level: 'read_analyze',
+                    expiry_days: 90
+                });
+            }
             Alert.alert("Permission Granted", "The doctor can now view your AI-enhanced medical report.");
-            loadNotifications();
+            loadNotifications(false);
         } catch (error) {
             ErrorHandler.handleError(error);
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleDenyAccess = async (notif) => {
         try {
-            await permissionsAPI.revokeDoctorAccess(notif.data.doctor_id, null);
+            setLoading(true);
+            const id = notif.id;
+            if (typeof id === 'string' && id.length > 20 && !id.includes('_')) {
+                // Real backend notification
+                await notificationAPI.rejectAccess(id);
+            } else {
+                // Synthetic request (old fallback)
+                await permissionsAPI.revokeDoctorAccess(notif.data.doctor_id, null);
+            }
             Alert.alert("Permission Denied", "We've notified the doctor of your preference.");
-            loadNotifications();
-        } catch (error) { }
+            loadNotifications(false);
+        } catch (error) {
+            ErrorHandler.handleError(error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const getNotificationStyle = (type) => {
-        switch (type) {
-            case 'appointment_approved': return { icon: 'checkmark-circle', color: '#4CAF50' };
-            case 'ai_access_request': return { icon: 'shield-checkmark', color: '#9C27B0' };
-            case 'appointment_declined': return { icon: 'close-circle', color: '#F44336' };
-            default: return { icon: 'information-circle', color: COLORS.primary };
-        }
+    const getNotificationStyle = (notif) => {
+        const lowerType = notif.type?.toLowerCase() || '';
+        const lowerTitle = notif.title?.toLowerCase() || '';
+
+        if (lowerType === 'appointment_approved' || lowerType === 'appointment_confirmed')
+            return { icon: 'checkmark-circle', color: '#4CAF50' };
+        if (lowerType.includes('access_request') || lowerType === 'access_requested' || lowerTitle.includes('access request'))
+            return { icon: 'shield-checkmark', color: '#9C27B0' };
+        if (lowerType === 'appointment_declined' || lowerType === 'appointment_cancelled')
+            return { icon: 'close-circle', color: '#F44336' };
+        if (lowerType.includes('consultation'))
+            return { icon: 'videocam', color: COLORS.primary };
+        return { icon: 'information-circle', color: COLORS.primary };
     };
 
     const formatTime = (ts) => {
@@ -204,34 +285,82 @@ export default function PatientNotificationsScreen({ navigation }) {
                     </View>
                 ) : (
                     notifications.map(notif => {
-                        const style = getNotificationStyle(notif.type);
-                        return (
-                            <View key={notif.id} style={[styles.card, !notif.read && styles.unread]}>
-                                <TouchableOpacity
-                                    style={styles.cardMain}
-                                    onPress={() => handleMarkAsRead(notif.id)}
-                                >
-                                    <View style={[styles.iconBox, { backgroundColor: style.color + '15' }]}>
-                                        <Ionicons name={style.icon} size={22} color={style.color} />
-                                    </View>
-                                    <View style={styles.content}>
-                                        <Text style={styles.title}>{notif.title}</Text>
-                                        <Text style={styles.message}>{notif.message}</Text>
-                                        <Text style={styles.time}>{formatTime(notif.timestamp)}</Text>
-                                    </View>
-                                </TouchableOpacity>
 
-                                {notif.type === 'ai_access_request' && !notif.read && (
-                                    <View style={styles.actions}>
-                                        <TouchableOpacity style={[styles.btn, styles.btnDeny]} onPress={() => handleDenyAccess(notif)}>
-                                            <Text style={styles.btnTextDeny}>Deny</Text>
+                        const renderRightActions = (progress, dragX) => {
+                            const transDelete = dragX.interpolate({
+                                inputRange: [-160, -80, 0],
+                                outputRange: [0, 0, 80],
+                            });
+                            const transRead = dragX.interpolate({
+                                inputRange: [-80, 0],
+                                outputRange: [0, 80],
+                            });
+
+                            return (
+                                <View style={styles.rightActionsContainer}>
+                                    {!notif.read && (
+                                        <TouchableOpacity
+                                            onPress={() => handleMarkAsRead(notif.id)}
+                                            style={[styles.swipeAction, styles.readAction]}
+                                        >
+                                            <Animated.View style={{ transform: [{ translateX: transRead }] }}>
+                                                <Ionicons name="mail-open-outline" size={22} color="white" />
+                                                <Text style={styles.swipeActionText}>Read</Text>
+                                            </Animated.View>
                                         </TouchableOpacity>
-                                        <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => handleGrantAccess(notif)}>
-                                            <Text style={styles.btnTextApprove}>Approve</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            </View>
+                                    )}
+                                    <TouchableOpacity
+                                        onPress={() => handleDeleteNotification(notif.id)}
+                                        style={[styles.swipeAction, styles.deleteAction]}
+                                    >
+                                        <Animated.View style={{ transform: [{ translateX: transDelete }] }}>
+                                            <Ionicons name="trash-outline" size={22} color="white" />
+                                            <Text style={styles.swipeActionText}>Delete</Text>
+                                        </Animated.View>
+                                    </TouchableOpacity>
+                                </View>
+                            );
+                        };
+
+                        const style = getNotificationStyle(notif);
+                        const isAccessRequest = notif.type?.toLowerCase().includes('access_request') ||
+                            notif.type === 'access_requested' ||
+                            notif.title?.toLowerCase().includes('access request');
+
+                        return (
+                            <Swipeable
+                                key={notif.id}
+                                renderRightActions={renderRightActions}
+                                friction={2}
+                                rightThreshold={40}
+                            >
+                                <View style={[styles.card, !notif.read && styles.unread]}>
+                                    <TouchableOpacity
+                                        style={styles.cardMain}
+                                        onPress={() => handleNotificationPress(notif)}
+                                    >
+                                        <View style={[styles.iconBox, { backgroundColor: style.color + '15' }]}>
+                                            <Ionicons name={style.icon} size={22} color={style.color} />
+                                        </View>
+                                        <View style={styles.content}>
+                                            <Text style={styles.title}>{notif.title}</Text>
+                                            <Text style={styles.message}>{notif.message}</Text>
+                                            <Text style={styles.time}>{formatTime(notif.timestamp)}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+
+                                    {isAccessRequest && (
+                                        <View style={styles.actions}>
+                                            <TouchableOpacity style={[styles.btn, styles.btnDeny]} onPress={() => handleDenyAccess(notif)}>
+                                                <Text style={styles.btnTextDeny}>Decline</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => handleGrantAccess(notif)}>
+                                                <Text style={styles.btnTextApprove}>Accept</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </View>
+                            </Swipeable>
                         );
                     })
                 )}
@@ -262,5 +391,32 @@ const styles = StyleSheet.create({
     btnTextApprove: { color: 'white', fontWeight: 'bold' },
     empty: { alignItems: 'center', marginTop: 100 },
     emptyText: { fontSize: 20, fontWeight: 'bold', color: '#444', marginTop: 20 },
-    emptySub: { fontSize: 14, color: '#888', marginTop: 10, textAlign: 'center' }
+    emptySub: { fontSize: 14, color: '#888', marginTop: 10, textAlign: 'center' },
+    rightActionsContainer: {
+        flexDirection: 'row',
+        width: 160,
+        marginBottom: 12,
+    },
+    swipeAction: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    deleteAction: {
+        backgroundColor: '#FF3B30',
+        borderTopRightRadius: 16,
+        borderBottomRightRadius: 16,
+    },
+    readAction: {
+        backgroundColor: COLORS.primary,
+        // No border radius on right if followed by delete, but for single action it needs it
+        borderTopLeftRadius: 0,
+        borderBottomLeftRadius: 0,
+    },
+    swipeActionText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 11,
+        marginTop: 4,
+    }
 });

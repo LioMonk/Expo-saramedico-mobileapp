@@ -193,20 +193,20 @@ export default function HospitalScheduleScreen({ navigation }) {
                 <View style={[styles.sexySide, { backgroundColor: accentColor }]} />
                 <View style={styles.sexyContent}>
                     <View style={styles.sexyHeader}>
-                        <View style={styles.sexyBadgesRow}>
+                        <View style={[styles.sexyBadgesRow, { flex: 1, flexWrap: 'wrap', marginRight: 8 }]}>
                             <View style={[styles.sexyBadge, { backgroundColor: accentColor + '10' }]}>
-                                <Ionicons name="time-outline" size={12} color={accentColor} />
+                                <Ionicons name="time-outline" size={10} color={accentColor} />
                                 <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayTime}</Text>
                             </View>
                         </View>
-                        <View style={[styles.typeBadge, { backgroundColor: accentColor + '15' }]}>
+                        <View style={[styles.typeBadge, { backgroundColor: accentColor + '15', alignSelf: 'flex-start' }]}>
                             <Text style={[styles.typeBadgeText, { color: accentColor }]}>
                                 {isAppointment ? 'APPOINTMENT' : 'EVENT'}
                             </Text>
                         </View>
                     </View>
-                    <Text style={styles.sexyTitle}>{item.title}</Text>
-                    {item.description ? <Text style={styles.sexyDesc} numberOfLines={2}>{item.description}</Text> : null}
+                    <Text style={styles.sexyTitle} numberOfLines={1} ellipsizeMode="tail">{item.title}</Text>
+                    {item.description ? <Text style={styles.sexyDesc} numberOfLines={2} ellipsizeMode="tail">{item.description}</Text> : null}
 
                     {!isAppointment && (
                         <View style={styles.sexyFooter}>
@@ -260,18 +260,20 @@ export default function HospitalScheduleScreen({ navigation }) {
                 </View>
             </View>
 
-            <View style={styles.tabsContainer}>
-                {['all', 'appointments', 'events'].map(tab => (
-                    <TouchableOpacity
-                        key={tab}
-                        style={[styles.tab, activeTab === tab && styles.activeTab]}
-                        onPress={() => setActiveTab(tab)}
-                    >
-                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+            <View style={{ height: 45, marginTop: 16 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+                    {['all', 'appointments', 'events'].map(tab => (
+                        <TouchableOpacity
+                            key={tab}
+                            style={[styles.tab, activeTab === tab && styles.activeTab]}
+                            onPress={() => setActiveTab(tab)}
+                        >
+                            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
 
             {viewMode === 'calendar' && (

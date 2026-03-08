@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, TextInput
+   View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -167,132 +167,136 @@ export default function DoctorSettingsScreen({ navigation }) {
 
    return (
       <SafeAreaView style={styles.container}>
-         <View style={styles.content}>
-            <View style={styles.header}>
-               <TouchableOpacity onPress={() => navigation.goBack()}>
-                  <Ionicons name="arrow-back" size={24} color="#333" />
-               </TouchableOpacity>
-               <View>
-                  <Text style={styles.headerTitle}>My Profile</Text>
+         <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+         >
+            <View style={styles.content}>
+               <View style={styles.header}>
+                  <TouchableOpacity onPress={() => navigation.goBack()}>
+                     <Ionicons name="arrow-back" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <View>
+                     <Text style={styles.headerTitle}>My Profile</Text>
+                  </View>
+                  <View style={{ width: 24 }} />
                </View>
-               <View style={{ width: 24 }} />
-            </View>
 
-            {loading ? (
-               <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={COLORS.primary} />
-               </View>
-            ) : (
-               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+               {loading ? (
+                  <View style={styles.loadingContainer}>
+                     <ActivityIndicator size="large" color={COLORS.primary} />
+                  </View>
+               ) : (
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 
-                  {/* Web-Style Info Text */}
-                  <Text style={styles.description}>Manage your personal information and account details.</Text>
+                     {/* Web-Style Info Text */}
+                     <Text style={styles.description}>Manage your personal information and account details.</Text>
 
-                  <View style={styles.profileCard}>
-                     {/* Exact Match Web Profile Header */}
-                     <View style={styles.profileCardContent}>
-                        <TouchableOpacity style={styles.avatarCircle} onPress={handleImagePick}>
-                           {profile.avatar_file || profile.avatar_url ? (
-                              <Image
-                                 source={{ uri: profile.avatar_file || profile.avatar_url }}
-                                 style={{ width: '100%', height: '100%' }}
-                              />
-                           ) : (
-                              <Text style={styles.avatarInitials}>
-                                 {profile.full_name ? profile.full_name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase() : "DR"}
+                     <View style={styles.profileCard}>
+                        {/* Exact Match Web Profile Header */}
+                        <View style={styles.profileCardContent}>
+                           <TouchableOpacity style={styles.avatarCircle} onPress={handleImagePick}>
+                              {profile.avatar_file || profile.avatar_url ? (
+                                 <Image
+                                    source={{ uri: profile.avatar_file || profile.avatar_url }}
+                                    style={{ width: '100%', height: '100%' }}
+                                 />
+                              ) : (
+                                 <Text style={styles.avatarInitials}>
+                                    {profile.full_name ? profile.full_name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase() : "DR"}
+                                 </Text>
+                              )}
+                           </TouchableOpacity>
+
+                           <View style={styles.profileInfoColumn}>
+                              <Text style={styles.profileNameTitle}>{profile.full_name || "Doctor"}</Text>
+                              <Text style={styles.profileCredentialsSub}>
+                                 {profile.credentials}{profile.credentials && profile.specialty ? ', ' : ''}{profile.specialty ? profile.specialty.toUpperCase() : ""}
                               </Text>
-                           )}
-                        </TouchableOpacity>
+                              <TouchableOpacity onPress={handleImagePick} style={{ marginTop: 8 }}>
+                                 <Text style={styles.uploadLink}>Upload Avatar</Text>
+                              </TouchableOpacity>
+                           </View>
+                        </View>
 
-                        <View style={styles.profileInfoColumn}>
-                           <Text style={styles.profileNameTitle}>{profile.full_name || "Doctor"}</Text>
-                           <Text style={styles.profileCredentialsSub}>
-                              {profile.credentials}{profile.credentials && profile.specialty ? ', ' : ''}{profile.specialty ? profile.specialty.toUpperCase() : ""}
-                           </Text>
-                           <TouchableOpacity onPress={handleImagePick} style={{ marginTop: 8 }}>
-                              <Text style={styles.uploadLink}>Upload Avatar</Text>
+                        {/* Web Form Grid Replacement */}
+                        <View style={styles.formGrid}>
+                           <View style={styles.formField}>
+                              <Text style={styles.label}>FULL NAME</Text>
+                              <TextInput
+                                 style={styles.input}
+                                 value={profile.full_name}
+                                 onChangeText={(val) => handleChange('full_name', val)}
+                                 placeholder="Your name"
+                              />
+                           </View>
+
+                           <View style={styles.formField}>
+                              <Text style={styles.label}>EMAIL ADDRESS</Text>
+                              <TextInput
+                                 style={[styles.input, styles.inputDisabled]}
+                                 value={profile.email}
+                                 editable={false}
+                                 placeholder="Email"
+                              />
+                           </View>
+
+                           <View style={styles.formField}>
+                              <Text style={styles.label}>CREDENTIALS</Text>
+                              <TextInput
+                                 style={styles.input}
+                                 value={profile.credentials}
+                                 onChangeText={(val) => handleChange('credentials', val)}
+                                 placeholder="MD, MBBS"
+                              />
+                           </View>
+
+                           <View style={styles.formField}>
+                              <Text style={styles.label}>SPECIALTY</Text>
+                              <TextInput
+                                 style={styles.input}
+                                 value={profile.specialty}
+                                 onChangeText={(val) => handleChange('specialty', val)}
+                                 placeholder="Cardiology"
+                              />
+                           </View>
+
+                           <View style={styles.formField}>
+                              <Text style={styles.label}>LICENSE NUMBER</Text>
+                              <TextInput
+                                 style={styles.input}
+                                 value={profile.license_number}
+                                 onChangeText={(val) => handleChange('license_number', val)}
+                                 placeholder="LIC-123456"
+                              />
+                           </View>
+                        </View>
+
+                        {/* Action Buttons */}
+                        <View style={styles.buttonGroup}>
+                           <TouchableOpacity style={styles.cancelBtn} onPress={() => loadDoctorProfile()}>
+                              <Text style={styles.cancelBtnText}>Cancel</Text>
+                           </TouchableOpacity>
+                           <TouchableOpacity
+                              style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                              onPress={handleSave}
+                              disabled={saving}
+                           >
+                              {saving ? <ActivityIndicator size="small" color="white" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
                            </TouchableOpacity>
                         </View>
                      </View>
 
-                     {/* Web Form Grid Replacement */}
-                     <View style={styles.formGrid}>
-                        <View style={styles.formField}>
-                           <Text style={styles.label}>FULL NAME</Text>
-                           <TextInput
-                              style={styles.input}
-                              value={profile.full_name}
-                              onChangeText={(val) => handleChange('full_name', val)}
-                              placeholder="Your name"
-                           />
-                        </View>
+                     {/* Maintaining Sign Out for Mobile Accessibility */}
+                     <TouchableOpacity style={styles.signOutBtn} onPress={() => setShowSignOut(true)}>
+                        <Ionicons name="log-out-outline" size={20} color="#D32F2F" style={{ marginRight: 8 }} />
+                        <Text style={styles.signOutText}>Sign Out</Text>
+                     </TouchableOpacity>
 
-                        <View style={styles.formField}>
-                           <Text style={styles.label}>EMAIL ADDRESS</Text>
-                           <TextInput
-                              style={[styles.input, styles.inputDisabled]}
-                              value={profile.email}
-                              editable={false}
-                              placeholder="Email"
-                           />
-                        </View>
-
-                        <View style={styles.formField}>
-                           <Text style={styles.label}>CREDENTIALS</Text>
-                           <TextInput
-                              style={styles.input}
-                              value={profile.credentials}
-                              onChangeText={(val) => handleChange('credentials', val)}
-                              placeholder="MD, MBBS"
-                           />
-                        </View>
-
-                        <View style={styles.formField}>
-                           <Text style={styles.label}>SPECIALTY</Text>
-                           <TextInput
-                              style={styles.input}
-                              value={profile.specialty}
-                              onChangeText={(val) => handleChange('specialty', val)}
-                              placeholder="Cardiology"
-                           />
-                        </View>
-
-                        <View style={styles.formField}>
-                           <Text style={styles.label}>LICENSE NUMBER</Text>
-                           <TextInput
-                              style={styles.input}
-                              value={profile.license_number}
-                              onChangeText={(val) => handleChange('license_number', val)}
-                              placeholder="LIC-123456"
-                           />
-                        </View>
-                     </View>
-
-                     {/* Action Buttons */}
-                     <View style={styles.buttonGroup}>
-                        <TouchableOpacity style={styles.cancelBtn} onPress={() => loadDoctorProfile()}>
-                           <Text style={styles.cancelBtnText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                           style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-                           onPress={handleSave}
-                           disabled={saving}
-                        >
-                           {saving ? <ActivityIndicator size="small" color="white" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-                        </TouchableOpacity>
-                     </View>
-                  </View>
-
-                  {/* Maintaining Sign Out for Mobile Accessibility */}
-                  <TouchableOpacity style={styles.signOutBtn} onPress={() => setShowSignOut(true)}>
-                     <Ionicons name="log-out-outline" size={20} color="#D32F2F" style={{ marginRight: 8 }} />
-                     <Text style={styles.signOutText}>Sign Out</Text>
-                  </TouchableOpacity>
-
-               </ScrollView>
-            )}
-         </View>
-
+                  </ScrollView>
+               )}
+            </View>
+         </KeyboardAvoidingView>
          <SignOutModal visible={showSignOut} onCancel={() => setShowSignOut(false)} onConfirm={handleSignOut} />
       </SafeAreaView>
    );

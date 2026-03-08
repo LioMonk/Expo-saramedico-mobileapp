@@ -279,13 +279,13 @@ export default function ScheduleScreen({ navigation }) {
         <View style={[styles.sexySide, { backgroundColor: accentColor }]} />
         <View style={styles.sexyContent}>
           <View style={styles.sexyHeader}>
-            <View style={styles.sexyBadgesRow}>
+            <View style={[styles.sexyBadgesRow, { flex: 1, flexWrap: 'wrap' }]}>
               <View style={[styles.sexyBadge, { backgroundColor: accentColor + '10' }]}>
-                <Ionicons name="calendar-outline" size={12} color={accentColor} />
+                <Ionicons name="calendar-outline" size={10} color={accentColor} />
                 <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayDate}</Text>
               </View>
               <View style={[styles.sexyBadge, { backgroundColor: accentColor + '10' }]}>
-                <Ionicons name="time-outline" size={12} color={accentColor} />
+                <Ionicons name="time-outline" size={10} color={accentColor} />
                 <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{displayTime}</Text>
               </View>
             </View>
@@ -300,11 +300,11 @@ export default function ScheduleScreen({ navigation }) {
             </View>
           </View>
 
-          <Text style={styles.sexyTitle}>
+          <Text style={styles.sexyTitle} numberOfLines={1} ellipsizeMode="tail">
             {isEvent ? item.title : (item.doctor_name || 'Doctor')}
           </Text>
 
-          <Text style={styles.sexyDesc} numberOfLines={2}>
+          <Text style={styles.sexyDesc} numberOfLines={2} ellipsizeMode="tail">
             {isEvent ? item.description : item.reason || 'No reason provided'}
           </Text>
 
@@ -338,8 +338,8 @@ export default function ScheduleScreen({ navigation }) {
                     role: 'patient'
                   })}
                 >
-                  <Ionicons name="videocam" size={18} color="white" />
-                  <Text style={styles.joinButtonText}>Join Meeting</Text>
+                  <Ionicons name="videocam" size={16} color="white" />
+                  <Text style={styles.joinButtonText} numberOfLines={1}>Join Meeting</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={[styles.statusTag, { backgroundColor: getStatusStyle(item.status).backgroundColor }]}>
@@ -395,9 +395,9 @@ export default function ScheduleScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <View style={{ flex: 1, paddingHorizontal: 12 }}>
+          <View style={{ flex: 1, paddingHorizontal: 8 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>Appointments</Text>
-            <Text style={{ fontSize: 11, color: '#666' }}>Securely manage and view your visits.</Text>
+            <Text style={{ fontSize: 10, color: '#666' }} numberOfLines={1} ellipsizeMode="tail">Securely manage your visits.</Text>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
@@ -450,25 +450,27 @@ export default function ScheduleScreen({ navigation }) {
         )}
 
         {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'all' && styles.activeTab]}
-            onPress={() => setActiveTab('all')}
-          >
-            <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'appointments' && styles.activeTab]}
-            onPress={() => setActiveTab('appointments')}
-          >
-            <Text style={[styles.tabText, activeTab === 'appointments' && styles.activeTabText]}>Appointments</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'events' && styles.activeTab]}
-            onPress={() => setActiveTab('events')}
-          >
-            <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
-          </TouchableOpacity>
+        <View style={{ height: 45, marginTop: 16 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'all' && styles.activeTab]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'appointments' && styles.activeTab]}
+              onPress={() => setActiveTab('appointments')}
+            >
+              <Text style={[styles.tabText, activeTab === 'appointments' && styles.activeTabText]}>Appointments</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'events' && styles.activeTab]}
+              onPress={() => setActiveTab('events')}
+            >
+              <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>Events</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         {/* List */}

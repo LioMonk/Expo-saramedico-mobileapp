@@ -124,11 +124,11 @@ export default function AdminScheduleScreen({ navigation }) {
                     <View style={styles.cardHeader}>
                       <Image source={{ uri: appt.img }} style={styles.avatar} />
                       <View style={{ flex: 1, marginLeft: 10 }}>
-                        <Text style={styles.docName}>{appt.doctor}</Text>
-                        <Text style={styles.docType}>{appt.type}</Text>
+                        <Text style={styles.docName} numberOfLines={1} ellipsizeMode="tail">{appt.doctor}</Text>
+                        <Text style={styles.docType} numberOfLines={1} ellipsizeMode="tail">{appt.type}</Text>
                       </View>
                       <View style={[styles.statusBadge, { backgroundColor: appt.statusColor }]}>
-                        <Text style={[styles.statusText, { color: appt.statusText }]}>{appt.status}</Text>
+                        <Text style={[styles.statusText, { color: appt.statusText }]} numberOfLines={1}>{appt.status}</Text>
                       </View>
                     </View>
                     <Text style={styles.duration}>{appt.duration}</Text>

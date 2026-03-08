@@ -7,6 +7,7 @@ import {
     Alert,
     Platform,
     TouchableOpacity,
+    KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, TextInput, Card, Checkbox, Avatar } from 'react-native-paper';
@@ -95,130 +96,135 @@ export default function AppointmentBookingScreen({ route, navigation }) {
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color="#333" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Book Appointment</Text>
-                <View style={{ width: 24 }} />
-            </View>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+            >
+                {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Ionicons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Book Appointment</Text>
+                    <View style={{ width: 24 }} />
+                </View>
 
-            <ScrollView style={styles.container}>
-                <Card style={styles.card}>
-                    <Card.Content>
-                        {/* Doctor Info */}
-                        <View style={styles.doctorHeader}>
-                            <Avatar.Image
-                                size={80}
-                                source={
-                                    doctor.photo_url
-                                        ? { uri: doctor.photo_url }
-                                        : { uri: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(doctor.name || 'Doctor') + '&background=random' }
-                                }
-                            />
-                            <View style={styles.doctorInfo}>
-                                <Text style={styles.doctorName}>
-                                    {(() => {
-                                        let dName = doctor.name || doctor.full_name || 'Doctor';
-                                        if (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor') dName = 'Doctor';
-                                        return dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
-                                    })()}
-                                </Text>
-                                <Text style={styles.doctorSpecialty}>{doctor.specialty}</Text>
-                            </View>
-                        </View>
-
-                        <Text style={styles.sectionTitle}>Appointment Details</Text>
-
-                        {/* Date & Time Selection */}
-                        <View style={styles.dateContainer}>
-                            <Text style={styles.label}>Preferred Date & Time *</Text>
-                            <View style={styles.dateTimeRow}>
-                                <TouchableOpacity
-                                    style={styles.dateTimeButton}
-                                    onPress={() => {
-                                        setPickerMode('date');
-                                        setShowPicker(true);
-                                    }}
-                                >
-                                    <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
-                                    <Text style={styles.dateTimeButtonText}>
-                                        {selectedDate.toLocaleDateString()}
-                                    </Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.dateTimeButton}
-                                    onPress={() => {
-                                        setPickerMode('time');
-                                        setShowPicker(true);
-                                    }}
-                                >
-                                    <Ionicons name="time-outline" size={20} color={COLORS.primary} />
-                                    <Text style={styles.dateTimeButtonText}>
-                                        {selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            {showPicker && (
-                                <DateTimePicker
-                                    value={selectedDate}
-                                    mode={pickerMode}
-                                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                    onChange={onDateChange}
+                <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+                    <Card style={styles.card}>
+                        <Card.Content>
+                            {/* Doctor Info */}
+                            <View style={styles.doctorHeader}>
+                                <Avatar.Image
+                                    size={80}
+                                    source={
+                                        doctor.photo_url
+                                            ? { uri: doctor.photo_url }
+                                            : { uri: 'https://ui-avatars.com/api/?name=' + encodeURIComponent(doctor.name || 'Doctor') + '&background=random' }
+                                    }
                                 />
-                            )}
-                        </View>
+                                <View style={styles.doctorInfo}>
+                                    <Text style={styles.doctorName}>
+                                        {(() => {
+                                            let dName = doctor.name || doctor.full_name || 'Doctor';
+                                            if (dName.toLowerCase() === 'encrypted' || dName.toLowerCase() === 'unknown doctor') dName = 'Doctor';
+                                            return dName.startsWith('Dr. ') ? dName : `Dr. ${dName}`;
+                                        })()}
+                                    </Text>
+                                    <Text style={styles.doctorSpecialty}>{doctor.specialty}</Text>
+                                </View>
+                            </View>
 
-                        {/* Reason Input */}
-                        <TextInput
-                            label="Reason for Visit *"
-                            value={reason}
-                            onChangeText={setReason}
-                            mode="outlined"
-                            multiline
-                            numberOfLines={4}
-                            style={styles.input}
-                            placeholder="e.g., Chest pain consultation, Follow-up visit, etc."
-                        />
+                            <Text style={styles.sectionTitle}>Appointment Details</Text>
 
-                        {/* Grant Access Checkbox */}
-                        <View style={styles.checkboxContainer}>
-                            <Checkbox
-                                status={grantAccess ? 'checked' : 'unchecked'}
-                                onPress={() => setGrantAccess(!grantAccess)}
+                            {/* Date & Time Selection */}
+                            <View style={styles.dateContainer}>
+                                <Text style={styles.label}>Preferred Date & Time *</Text>
+                                <View style={styles.dateTimeRow}>
+                                    <TouchableOpacity
+                                        style={styles.dateTimeButton}
+                                        onPress={() => {
+                                            setPickerMode('date');
+                                            setShowPicker(true);
+                                        }}
+                                    >
+                                        <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                                        <Text style={styles.dateTimeButtonText}>
+                                            {selectedDate.toLocaleDateString()}
+                                        </Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.dateTimeButton}
+                                        onPress={() => {
+                                            setPickerMode('time');
+                                            setShowPicker(true);
+                                        }}
+                                    >
+                                        <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+                                        <Text style={styles.dateTimeButtonText}>
+                                            {selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {showPicker && (
+                                    <DateTimePicker
+                                        value={selectedDate}
+                                        mode={pickerMode}
+                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                        onChange={onDateChange}
+                                    />
+                                )}
+                            </View>
+
+                            {/* Reason Input */}
+                            <TextInput
+                                label="Reason for Visit *"
+                                value={reason}
+                                onChangeText={setReason}
+                                mode="outlined"
+                                multiline
+                                numberOfLines={4}
+                                style={styles.input}
+                                placeholder="e.g., Chest pain consultation, Follow-up visit, etc."
                             />
-                            <Text style={styles.checkboxLabel}>
-                                Grant access to my medical history
+
+                            {/* Grant Access Checkbox */}
+                            <View style={styles.checkboxContainer}>
+                                <Checkbox
+                                    status={grantAccess ? 'checked' : 'unchecked'}
+                                    onPress={() => setGrantAccess(!grantAccess)}
+                                />
+                                <Text style={styles.checkboxLabel}>
+                                    Grant access to my medical history
+                                </Text>
+                            </View>
+                            <Text style={styles.checkboxInfo}>
+                                By checking this box, you allow the doctor to view your uploaded medical
+                                documents for this consultation.
                             </Text>
-                        </View>
-                        <Text style={styles.checkboxInfo}>
-                            By checking this box, you allow the doctor to view your uploaded medical
-                            documents for this consultation.
-                        </Text>
 
-                        {/* Book Button */}
-                        <Button
-                            mode="contained"
-                            onPress={handleBookAppointment}
-                            disabled={loading}
-                            loading={loading}
-                            style={styles.bookButton}
-                        >
-                            {loading ? 'Requesting...' : 'Request Appointment'}
-                        </Button>
+                            {/* Book Button */}
+                            <Button
+                                mode="contained"
+                                onPress={handleBookAppointment}
+                                disabled={loading}
+                                loading={loading}
+                                style={styles.bookButton}
+                            >
+                                {loading ? 'Requesting...' : 'Request Appointment'}
+                            </Button>
 
-                        {/* Info Text */}
-                        <Text style={styles.infoText}>
-                            Your appointment request will be sent to the doctor for approval. You will
-                            receive a notification once the doctor confirms the appointment and provides
-                            a meeting link.
-                        </Text>
-                    </Card.Content>
-                </Card>
-            </ScrollView>
+                            {/* Info Text */}
+                            <Text style={styles.infoText}>
+                                Your appointment request will be sent to the doctor for approval. You will
+                                receive a notification once the doctor confirms the appointment and provides
+                                a meeting link.
+                            </Text>
+                        </Card.Content>
+                    </Card>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }

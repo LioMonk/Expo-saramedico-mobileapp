@@ -58,7 +58,7 @@ export default function MicrophoneTestScreen({ navigation }) {
               {/* Text Box */}
               <View style={styles.transcriptionBox}>
                 <Text style={styles.transcriptionText}>
-                  Hello, this is an audio test for the Saramedico Audio Transcription Services, this text will be transcribed live...
+                  Audio system online. Testing default microphone input... Please speak clearly.
                 </Text>
               </View>
 

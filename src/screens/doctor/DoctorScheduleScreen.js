@@ -461,26 +461,26 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                 <View style={[styles.sexyCardSide, { backgroundColor: accentColor }]} />
                 <View style={styles.sexyCardContent}>
                     <View style={styles.sexyCardHeader}>
-                        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', flex: 1, marginRight: 8 }}>
                             <View style={[styles.sexyTimeBox, { backgroundColor: accentColor + '10' }]}>
-                                <Ionicons name="calendar-outline" size={12} color={accentColor} />
+                                <Ionicons name="calendar-outline" size={10} color={accentColor} />
                                 <Text style={[styles.sexyTimeText, { color: accentColor }]}>{displayDate}</Text>
                             </View>
                             <View style={[styles.sexyTimeBox, { backgroundColor: accentColor + '10' }]}>
-                                <Ionicons name="time-outline" size={12} color={accentColor} />
+                                <Ionicons name="time-outline" size={10} color={accentColor} />
                                 <Text style={[styles.sexyTimeText, { color: accentColor }]}>{displayTime}</Text>
                             </View>
                         </View>
-                        <View style={[styles.sexyBadge, { backgroundColor: accentColor + '15' }]}>
+                        <View style={[styles.sexyBadge, { backgroundColor: accentColor + '15', alignSelf: 'flex-start' }]}>
                             <Ionicons name={iconName} size={10} color={accentColor} style={{ marginRight: 4 }} />
                             <Text style={[styles.sexyBadgeText, { color: accentColor }]}>{tagLabel}</Text>
                         </View>
                     </View>
 
-                    <Text style={styles.sexyTitle}>{displayTitle}</Text>
+                    <Text style={styles.sexyTitle} numberOfLines={2} ellipsizeMode="tail">{displayTitle}</Text>
 
                     {description ? (
-                        <Text style={styles.sexyDesc} numberOfLines={2}>{description}</Text>
+                        <Text style={styles.sexyDesc} numberOfLines={2} ellipsizeMode="tail">{description}</Text>
                     ) : (
                         <Text style={[styles.sexyDesc, { color: '#BDBDBD', fontStyle: 'italic' }]}>No additional details</Text>
                     )}
@@ -529,8 +529,8 @@ export default function DoctorScheduleScreen({ navigation, route }) {
                                         style={[styles.sexyEditBtn, { backgroundColor: hasMeetingLink ? '#3B82F6' : '#94A3B8', flex: 1 }]}
                                         onPress={() => handleStartCall(item)}
                                     >
-                                        <Ionicons name={(hasMeetingLink || item.status === 'accepted') ? "videocam" : "videocam-off-outline"} size={18} color="white" />
-                                        <Text style={styles.sexyActionText}>
+                                        <Ionicons name={(hasMeetingLink || item.status === 'accepted') ? "videocam" : "videocam-off-outline"} size={16} color="white" />
+                                        <Text style={styles.sexyActionText} numberOfLines={1}>
                                             {(hasMeetingLink || item.status === 'accepted') ? 'Start Meeting' : 'Link Pending...'}
                                         </Text>
                                     </TouchableOpacity>

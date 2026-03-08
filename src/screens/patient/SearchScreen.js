@@ -26,9 +26,24 @@ export default function SearchScreen({ navigation }) {
       try {
          // Load all doctors without any query
          const response = await patientAPI.searchDoctors();
-         const doctorsList = response.data?.results || response.data || [];
-         setAllDoctors(doctorsList);
-         setFilteredDoctors(doctorsList);
+         let doctorsList = response.data?.results || response.data || [];
+
+         // Deduplicate doctors by ID to prevent double entries
+         const uniqueDoctors = [];
+         const seenIds = new Set();
+
+         doctorsList.forEach(doctor => {
+            const docId = doctor.id?.toString();
+            if (docId && !seenIds.has(docId)) {
+               seenIds.add(docId);
+               uniqueDoctors.push(doctor);
+            } else if (!docId) {
+               uniqueDoctors.push(doctor);
+            }
+         });
+
+         setAllDoctors(uniqueDoctors);
+         setFilteredDoctors(uniqueDoctors);
       } catch (error) {
          console.error('Error loading doctors:', error);
          setAllDoctors([]);

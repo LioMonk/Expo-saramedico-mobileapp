@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity
+  View, Text, StyleSheet, TouchableOpacity, Alert, Animated
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +8,52 @@ import { COLORS } from '../../constants/theme';
 import { CustomButton } from '../../components/CustomComponents';
 
 export default function DoctorMicrophoneTestScreen({ navigation }) {
+  const [isTesting, setIsTesting] = React.useState(false);
+  const [micLevel] = React.useState(new Animated.Value(1));
+  const micAnimRef = React.useRef(null);
+
+  const startTest = () => {
+    Alert.alert(
+      "Microphone Access",
+      "Saramedico needs access to your microphone to perform this test.",
+      [
+        { text: "Deny", style: "cancel" },
+        {
+          text: "Allow",
+          onPress: () => {
+            setIsTesting(true);
+            const animate = () => {
+              Animated.sequence([
+                Animated.timing(micLevel, {
+                  toValue: 1 + Math.random() * 0.8,
+                  duration: 150,
+                  useNativeDriver: true
+                }),
+                Animated.timing(micLevel, {
+                  toValue: 1,
+                  duration: 150,
+                  useNativeDriver: true
+                })
+              ]).start();
+            };
+            micAnimRef.current = setInterval(animate, 310);
+          }
+        }
+      ]
+    );
+  };
+
+  const stopTest = () => {
+    setIsTesting(false);
+    if (micAnimRef.current) {
+      clearInterval(micAnimRef.current);
+      micAnimRef.current = null;
+    }
+    Animated.timing(micLevel, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+  };
 
   const handleNextStep = () => {
-    // Navigate directly to Dashboard (onboarding complete)
+    stopTest();
     navigation.navigate('DoctorDashboard');
   };
 
@@ -29,20 +72,34 @@ export default function DoctorMicrophoneTestScreen({ navigation }) {
         </View>
 
         <Text style={styles.title}>Test Your Microphone</Text>
-        <Text style={styles.subtitle}>Please speak a short sentence to ensure accurate transcription</Text>
+        <Text style={styles.subtitle}>
+          {isTesting
+            ? "Speak clearly. The circle will pulse if audio is detected."
+            : "Please speak a short sentence to ensure accurate transcription"}
+        </Text>
 
         {/* Mic Visualizer Area */}
         <View style={styles.micContainer}>
-          <View style={styles.micCircleOuter}>
-            <View style={styles.micCircleInner}>
-              <Ionicons name="mic" size={40} color="white" />
+          <Animated.View style={[
+            styles.micCircleOuter,
+            { transform: [{ scale: micLevel }], borderColor: isTesting ? COLORS.primary : '#EEE' }
+          ]}>
+            <View style={[styles.micCircleInner, { backgroundColor: isTesting ? COLORS.primary : '#94A3B8' }]}>
+              <Ionicons name={isTesting ? "mic" : "mic-outline"} size={40} color="white" />
             </View>
-          </View>
+          </Animated.View>
+          {isTesting && (
+            <Text style={{ marginTop: 20, color: COLORS.primary, fontWeight: '700' }}>AUDIO DETECTED</Text>
+          )}
         </View>
 
         {/* Footer */}
         <View style={styles.footer}>
-          <CustomButton title="Start Test" onPress={handleNextStep} />
+          {!isTesting ? (
+            <CustomButton title="Start Test" onPress={startTest} />
+          ) : (
+            <CustomButton title="Continue to Dashboard" onPress={handleNextStep} />
+          )}
           <TouchableOpacity
             style={{ alignItems: 'center', marginTop: 15 }}
             onPress={handleNextStep}

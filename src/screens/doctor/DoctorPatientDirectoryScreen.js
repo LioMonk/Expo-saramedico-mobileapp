@@ -214,7 +214,7 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
                   <View style={styles.cardGrid}>
                     <View style={styles.gridItem}>
                       <Text style={styles.gridLabel}>DOB / AGE</Text>
-                      <Text style={styles.gridValue}>{p.dob || 'N/A'} {age !== null ? `(${age}y)` : ''}</Text>
+                      <Text style={styles.gridValue} numberOfLines={1}>{p.dob || 'N/A'} {age !== null ? `(${age}y)` : ''}</Text>
                     </View>
                     <View style={[styles.gridItem, { flex: 1.2 }]}>
                       <Text style={styles.gridLabel}>MRN</Text>
@@ -222,7 +222,7 @@ export default function DoctorPatientDirectoryScreen({ navigation }) {
                     </View>
                     <View style={styles.gridItem}>
                       <Text style={styles.gridLabel}>LAST VISIT</Text>
-                      <Text style={styles.gridValue}>{lastVisitStr}</Text>
+                      <Text style={styles.gridValue} numberOfLines={1}>{lastVisitStr}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>

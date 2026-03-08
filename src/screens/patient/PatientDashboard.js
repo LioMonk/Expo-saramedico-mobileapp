@@ -89,11 +89,13 @@ export default function PatientDashboard({ navigation }) {
         .filter(apt => {
           if (isNaN(apt.sortDate.getTime())) return false;
           const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-          return apt.sortDate >= twoHoursAgo && (apt.status === 'accepted' || apt.status === 'pending');
+          // Include 'active' and 'scheduled' statuses
+          return apt.sortDate >= twoHoursAgo &&
+            (apt.status === 'accepted' || apt.status === 'pending' || apt.status === 'active' || apt.status === 'scheduled');
         })
         .sort((a, b) => a.sortDate - b.sortDate);
 
-      setNextAppointment(upcoming.length > 0 ? upcoming[0] : null);
+      let currentApt = upcoming.length > 0 ? upcoming[0] : null;
 
       try {
         const consultationsRes = await patientAPI.getMyConsultations(10).catch(() => ({ data: [] }));
@@ -135,9 +137,33 @@ export default function PatientDashboard({ navigation }) {
           setRecentVisits(lastApts);
         } else {
           setRecentVisits(visits);
+
+          // Check for an ongoing consultation that might not be in the appointments list
+          const activeConsult = visits.find(v =>
+            v.status === 'active' || v.status === 'started' || v.status === 'ongoing'
+          );
+
+          if (activeConsult) {
+            const consultApt = {
+              ...activeConsult,
+              doctor_name: activeConsult.doctorName || activeConsult.doctor_name || doctorsMap[activeConsult.doctorId || activeConsult.doctor_id],
+              reason: activeConsult.chiefComplaint || activeConsult.reason || 'Ongoing Consultation',
+              sortDate: new Date(activeConsult.scheduledAt || activeConsult.date),
+              status: 'active',
+              meet_link: activeConsult.meetLink || activeConsult.meet_link || activeConsult.join_url
+            };
+
+            // If we have an active consult, it takes precedence over scheduled ones if they are later
+            if (!currentApt || moment(consultApt.sortDate).isBefore(moment(currentApt.sortDate).add(30, 'minutes'))) {
+              currentApt = consultApt;
+            }
+          }
         }
+
+        setNextAppointment(currentApt);
       } catch (err) {
         setRecentVisits([]);
+        setNextAppointment(currentApt);
       }
 
       try {
@@ -286,7 +312,7 @@ export default function PatientDashboard({ navigation }) {
               </View>
 
               {(nextAppointment.status === 'accepted' || nextAppointment.status === 'scheduled' || nextAppointment.status === 'active') &&
-                (nextAppointment.meet_link || nextAppointment.meetLink || nextAppointment.join_url || nextAppointment.meeting?.join_url || nextAppointment.id) && (
+                (nextAppointment.meet_link || nextAppointment.meetLink || nextAppointment.join_url || nextAppointment.joinUrl || nextAppointment.meeting?.join_url || nextAppointment.meeting?.joinUrl) && (
                   <TouchableOpacity
                     style={styles.joinButtonSlim}
                     onPress={() => navigation.navigate('VideoCallScreen', {

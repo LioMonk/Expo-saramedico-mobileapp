@@ -100,7 +100,7 @@ api.interceptors.response.use(
 
 export const authAPI = {
   // POST /auth/register - Enhanced to support doctor registration
-  register: (email, password, fullName, role, phoneNumber = null, organizationName = null) => {
+  register: (email, password, fullName, role, phoneNumber = null, organizationName = null, specialty = null, licenseNumber = null) => {
     const [firstName, ...lastNameParts] = fullName.trim().split(' ');
     const lastName = lastNameParts.join(' ') || 'User';
 
@@ -113,6 +113,8 @@ export const authAPI = {
       full_name: fullName,
       role, // 'patient', 'doctor', 'admin', 'hospital'
       phone_number: phoneNumber,
+      specialty,
+      license_number: licenseNumber
     };
     if (organizationName) payload.organization_name = organizationName;
 
@@ -286,10 +288,11 @@ export const patientAPI = {
   // POST /api/v1/documents/upload (File Upload)
   uploadMedicalHistory: async (file, category, title, description, onProgress) => {
     const formData = new FormData();
+    const resolvedUri = Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri;
     formData.append('file', {
-      uri: file.uri,
-      name: file.name,
-      type: file.type || 'application/octet-stream',
+      uri: resolvedUri,
+      name: file.name || 'document.pdf',
+      type: file.type || file.mimeType || 'application/octet-stream',
     });
 
     const userDataStr = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
@@ -394,24 +397,13 @@ export const doctorAPI = {
   // PUT /doctor/patients/:id/health/:metricId - Update a health metric
   updateHealthMetric: (patientId, metricId, data) => api.put(`/doctor/patients/${patientId}/health/${metricId}`, data),
 
-  // Upload a document for a specific patient (wrapper around uploadDocumentDirect)
-  uploadPatientDocument: async (patientId, fileUri, fileName) => {
-    const formData = new FormData();
-    formData.append('file', { uri: fileUri, type: 'application/octet-stream', name: fileName });
-    formData.append('patient_id', patientId);
-    formData.append('notes', fileName);
-    formData.append('category', 'medical_record');
-    const token = await AsyncStorage.getItem(TOKEN_CONFIG.ACCESS_TOKEN_KEY);
-    const response = await fetch(`${API_CONFIG.BASE_URL}/documents/upload`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
-      body: formData,
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err?.detail || `Upload failed with status ${response.status}`);
-    }
-    return response.json();
+  // Robust upload helper (alias for uploadDocumentDirect for simplicity)
+  uploadPatientDocument: async (patientId, fileUri, fileName, mimeType = 'application/octet-stream') => {
+    return doctorAPI.uploadDocumentDirect({
+      uri: fileUri,
+      name: fileName,
+      type: mimeType
+    }, patientId);
   },
 
   // GET /doctors (All doctors for admin/patient directory)
@@ -456,15 +448,39 @@ export const doctorAPI = {
     doctor_notes: notes,
   }),
 
-  // GET /documents (with patient filter) (with MinIO URL rewriting)
+  // Corrected: GET /documents with patient filter (matching backend router)
   getPatientDocuments: async (patientId) => {
-    const response = await api.get(`/doctor/patients/${patientId}/documents`);
-    const docs = response.data?.documents || response.data;
+    // The backend endpoint is GET /documents?patient_id=...
+    const response = await api.get('/documents', { params: { patient_id: patientId } });
+    const docs = response.data?.documents || response.data?.items || response.data;
     if (Array.isArray(docs)) {
       docs.forEach(doc => {
+        // Ensure both naming conventions are present for UI compatibility
+        if (doc.fileName && !doc.file_name) doc.file_name = doc.fileName;
+        if (doc.fileName && !doc.title) doc.title = doc.fileName;
+        if (doc.file_name && !doc.fileName) doc.fileName = doc.file_name;
+        if (doc.file_name && !doc.title) doc.title = doc.file_name;
+
+        if (doc.fileSize && !doc.file_size) doc.file_size = doc.fileSize;
+        if (doc.file_size && !doc.fileSize) doc.fileSize = doc.file_size;
+
+        if (doc.uploadedAt && !doc.uploaded_at) doc.uploaded_at = doc.uploadedAt;
+        if (doc.uploaded_at && !doc.uploadedAt) doc.uploadedAt = doc.uploaded_at;
+
+        if (doc.patientId && !doc.patient_id) doc.patient_id = doc.patientId;
+        if (doc.patient_id && !doc.patientId) doc.patientId = doc.patient_id;
+
+        // Fix all possible URL fields
         if (doc.presigned_url) doc.presigned_url = fixUrl(doc.presigned_url);
         if (doc.url) doc.url = fixUrl(doc.url);
+        if (doc.file_url) doc.file_url = fixUrl(doc.file_url);
         if (doc.download_url) doc.download_url = fixUrl(doc.download_url);
+        if (doc.downloadUrl) doc.downloadUrl = fixUrl(doc.downloadUrl);
+        if (doc.preview_url) doc.preview_url = fixUrl(doc.preview_url);
+
+        // Ensure download_url/downloadUrl exists for the UI
+        if (!doc.download_url && doc.presigned_url) doc.download_url = doc.presigned_url;
+        if (!doc.downloadUrl && doc.download_url) doc.downloadUrl = doc.download_url;
       });
     }
     return response;
@@ -493,74 +509,42 @@ export const doctorAPI = {
   // Documents - /documents
   uploadDocumentDirect: async (file, patientId, metadata = {}) => {
     const formData = new FormData();
+    const resolvedUri = Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri;
     formData.append('file', {
-      uri: file.uri,
-      type: file.mimeType || file.type || 'application/pdf',
-      name: file.name,
+      uri: resolvedUri,
+      type: file.mimeType || file.type || 'application/octet-stream',
+      name: file.name || 'document.pdf',
     });
     formData.append('patient_id', patientId);
-    if (metadata.title) {
-      formData.append('notes', metadata.title);
-    }
-    if (metadata.category) {
-      formData.append('category', metadata.category);
-    }
+    if (metadata.title) formData.append('notes', metadata.title);
+    if (metadata.category) formData.append('category', metadata.category);
 
-    // Get current token for raw fetch
     const token = await AsyncStorage.getItem(TOKEN_CONFIG.ACCESS_TOKEN_KEY);
-
-    let response;
     try {
-      response = await fetch(`${API_CONFIG.BASE_URL}/documents/upload`, {
-        method: 'POST',
+      const response = await api.post('/documents/upload', formData, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: formData,
+          'Content-Type': 'multipart/form-data',
+        }
       });
-    } catch (networkError) {
-      // Network-level failure (no connection, DNS, etc.)
-      console.error('[Upload] Network error:', networkError.message);
-      return Promise.reject({
-        response: null,
-        message: 'Network error: Could not reach the server. Please check your internet connection.'
-      });
-    }
-
-    const responseText = await response.text();
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      data = { detail: responseText };
-    }
-
-    if (!response.ok) {
-      // Server-side Redis/Celery errors: the document may have been saved even though
-      // the background task failed. Treat as partial success if we get a 500 with
-      // a Redis traceback but the response contains a document id.
-      const isRedisError = data?.detail && (
-        (typeof data.detail === 'string' && data.detail.includes('redis')) ||
-        (typeof data.traceback === 'string' && data.traceback.includes('redis'))
-      );
-
-      if (response.status === 500 && isRedisError && data?.id) {
-        // The file was saved but background processing failed — treat as partial success
-        console.warn('[Upload] Redis background task failed but file was saved. Continuing...');
-        return Promise.resolve({ data, partialSuccess: true });
+      const data = response.data;
+      if (data && (data.presigned_url || data.url)) {
+        if (data.presigned_url) data.presigned_url = fixUrl(data.presigned_url);
+        if (data.url) data.url = fixUrl(data.url);
+        if (data.preview_url) data.preview_url = fixUrl(data.preview_url);
       }
-
-      return Promise.reject({ response: { data, status: response.status } });
+      return { data };
+    } catch (error) {
+      const errData = error.response?.data;
+      const isRedisError = errData?.detail && (
+        (typeof errData.detail === 'string' && errData.detail.includes('redis')) ||
+        (typeof errData.traceback === 'string' && errData.traceback.includes('redis'))
+      );
+      if (error.response?.status === 500 && isRedisError && (errData?.id || errData?.document_id)) {
+        console.warn('[Upload] Redis background task failed but file was saved.');
+        return { data: errData, partialSuccess: true };
+      }
+      throw error;
     }
-
-    if (data && (data.presigned_url || data.url)) {
-      if (data.presigned_url) data.presigned_url = fixUrl(data.presigned_url);
-      if (data.url) data.url = fixUrl(data.url);
-      if (data.preview_url) data.preview_url = fixUrl(data.preview_url);
-    }
-
-    return Promise.resolve({ data });
   },
   requestUploadUrl: (patientId, fileName, fileType, fileSize) => api.post('/documents/upload-url', {
     patientId,
@@ -992,6 +976,18 @@ export const notificationAPI = {
   // PATCH /notifications/read-all
   markAllRead: () =>
     safeNotifCall(() => api.patch('/notifications/read-all'), { success: true }),
+
+  // DELETE /notifications/{id}
+  deleteNotification: (id) =>
+    safeNotifCall(() => api.delete(`/notifications/${id}`), { success: true }),
+
+  // POST /notifications/{id}/approve-ai-access
+  approveAccess: (id) =>
+    safeNotifCall(() => api.post(`/notifications/${id}/approve-ai-access`), { success: true }),
+
+  // POST /notifications/{id}/reject-ai-access
+  rejectAccess: (id) =>
+    safeNotifCall(() => api.post(`/notifications/${id}/reject-ai-access`), { success: true }),
 };
 
 // ==================== ADMIN API ====================

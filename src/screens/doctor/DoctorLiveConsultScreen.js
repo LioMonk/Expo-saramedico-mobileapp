@@ -127,28 +127,53 @@ export default function DoctorLiveConsultScreen({ navigation }) {
     // Mic visualizer
     const startMicVisualizer = () => {
         setIsMicActive(true);
+        // Simulate permission request if it's first time
         const animate = () => {
-            micAnimValues.forEach(val => {
+            micAnimValues.forEach((val, i) => {
+                // Different frequency patterns for a more realistic "level" effect
+                const base = Math.sin(Date.now() / 200 + i) * 10 + 20;
+                const rand = Math.random() * 30;
                 Animated.timing(val, {
-                    toValue: Math.random() * 52 + 6,
-                    duration: 140,
+                    toValue: Math.max(4, base + rand),
+                    duration: 120,
                     useNativeDriver: false,
                 }).start();
             });
         };
         animate();
-        micIntervalRef.current = setInterval(animate, 160);
+        micIntervalRef.current = setInterval(animate, 140);
+
+        // Auto-stop after 10 seconds to save battery/resources
+        setTimeout(() => {
+            if (isMicActive) stopMicVisualizer();
+        }, 10000);
     };
 
     const stopMicVisualizer = () => {
         setIsMicActive(false);
-        clearInterval(micIntervalRef.current);
+        if (micIntervalRef.current) {
+            clearInterval(micIntervalRef.current);
+            micIntervalRef.current = null;
+        }
         micAnimValues.forEach(val =>
-            Animated.timing(val, { toValue: 4, duration: 250, useNativeDriver: false }).start()
+            Animated.timing(val, { toValue: 4, duration: 300, useNativeDriver: false }).start()
         );
     };
 
-    const toggleMic = () => isMicActive ? stopMicVisualizer() : startMicVisualizer();
+    const toggleMic = () => {
+        if (isMicActive) {
+            stopMicVisualizer();
+        } else {
+            Alert.alert(
+                "Microphone Access",
+                "Allow Saramedico to access your microphone for this session?",
+                [
+                    { text: "Deny", style: "cancel" },
+                    { text: "Allow", onPress: startMicVisualizer }
+                ]
+            );
+        }
+    };
 
     // Session handlers
     const handleStartConsultation = async () => {

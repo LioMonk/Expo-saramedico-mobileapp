@@ -17,42 +17,70 @@ import ErrorHandler from '../../services/errorHandler';
 import moment from 'moment';
 
 export default function AppointmentDetailScreen({ route, navigation }) {
-    const { appointment, role = 'patient' } = route.params;
+    const { appointment: initialAppointment, id: appointmentId, role = 'patient' } = route.params || {};
+    const [appointment, setAppointment] = useState(initialAppointment);
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadHistory();
-    }, []);
+        const init = async () => {
+            setLoading(true);
+            try {
+                let currentApt = initialAppointment;
 
-    const loadHistory = async () => {
-        try {
-            let pastHistory = [];
-            if (role === 'doctor') {
-                const { doctorAPI } = require('../../services/api');
-                const response = await doctorAPI.getAppointments();
-                const allAppts = response.data || [];
-                pastHistory = allAppts.filter(appt =>
-                    appt.patient_id === appointment.patient_id &&
-                    appt.id !== appointment.id &&
-                    new Date(appt.requested_date) < new Date()
-                ).sort((a, b) => new Date(b.requested_date) - new Date(a.requested_date));
-            } else {
-                const response = await patientAPI.getMyAppointments();
-                const allAppts = response.data || [];
-                pastHistory = allAppts.filter(appt =>
-                    appt.doctor_id === appointment.doctor_id &&
-                    appt.id !== appointment.id &&
-                    new Date(appt.requested_date) < new Date()
-                ).sort((a, b) => new Date(b.requested_date) - new Date(a.requested_date));
+                // 1. Fetch appointment if missing but ID exists (e.g. from Notifications)
+                if (!currentApt && appointmentId) {
+                    console.log('🔄 [AppointmentDetail] Fetching appointment by ID:', appointmentId);
+                    if (role === 'doctor') {
+                        const { doctorAPI } = require('../../services/api');
+                        const res = await doctorAPI.getAppointments();
+                        const list = res.data || [];
+                        currentApt = list.find(a => a.id === appointmentId);
+                    } else {
+                        const res = await patientAPI.getMyAppointments();
+                        const list = res.data || [];
+                        currentApt = list.find(a => a.id === appointmentId);
+                    }
+                    if (currentApt) {
+                        setAppointment(currentApt);
+                    } else {
+                        throw new Error('Appointment not found');
+                    }
+                }
+
+                if (currentApt) {
+                    // 2. Load History
+                    let pastHistory = [];
+                    if (role === 'doctor') {
+                        const { doctorAPI } = require('../../services/api');
+                        const response = await doctorAPI.getAppointments();
+                        const allAppts = response.data || [];
+                        pastHistory = allAppts.filter(appt =>
+                            appt.patient_id === currentApt.patient_id &&
+                            appt.id !== currentApt.id &&
+                            new Date(appt.requested_date || appt.appointment_date) < new Date()
+                        ).sort((a, b) => new Date(b.requested_date || b.appointment_date) - new Date(a.requested_date || a.appointment_date));
+                    } else {
+                        const response = await patientAPI.getMyAppointments();
+                        const allAppts = response.data || [];
+                        pastHistory = allAppts.filter(appt =>
+                            appt.doctor_id === currentApt.doctor_id &&
+                            appt.id !== currentApt.id &&
+                            new Date(appt.requested_date || appt.appointment_date) < new Date()
+                        ).sort((a, b) => new Date(b.requested_date || b.appointment_date) - new Date(a.requested_date || a.appointment_date));
+                    }
+                    setHistory(pastHistory);
+                }
+            } catch (error) {
+                console.error('❌ [AppointmentDetail] Init Error:', error);
+                Alert.alert('Error', 'Failed to load appointment details');
+            } finally {
+                setLoading(false);
             }
-            setHistory(pastHistory);
-        } catch (error) {
-            console.error('Failed to load history:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
+
+        init();
+    }, [appointmentId, initialAppointment]);
 
     const statusColors = {
         pending: '#FFA000',
@@ -61,6 +89,19 @@ export default function AppointmentDetailScreen({ route, navigation }) {
         completed: '#2196F3',
         cancelled: '#9E9E9E'
     };
+
+    if (!appointment && !loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.centered}>
+                    <Text>Appointment not found or data missing.</Text>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                        <Text style={{ color: COLORS.primary }}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -385,5 +426,14 @@ const styles = StyleSheet.create({
         marginTop: 10,
         fontSize: 14,
         color: '#999',
+    },
+    centered: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    backBtn: {
+        marginTop: 20,
+        padding: 10,
     },
 });

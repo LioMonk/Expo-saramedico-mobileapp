@@ -196,84 +196,91 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <View style={styles.content}>
 
-        {/* Logo Section */}
-        <View style={styles.headerCenter}>
-          <Image
-            source={require('../../../assets/icon_new.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+            {/* Logo Section */}
+            <View style={styles.headerCenter}>
+              <Image
+                source={require('../../../assets/icon_new.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
 
-        {/* Tab Switcher */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity style={styles.activeTab}>
-            <Text style={styles.activeTabText}>Login</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.inactiveTab}
-            onPress={() => navigation.navigate('SignUp')}
-          >
-            <Text style={styles.inactiveTabText}>Sign Up</Text>
-          </TouchableOpacity>
-        </View>
+            {/* Tab Switcher */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity style={styles.activeTab}>
+                <Text style={styles.activeTabText}>Login</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.inactiveTab}
+                onPress={() => navigation.navigate('SignUp')}
+              >
+                <Text style={styles.inactiveTabText}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* Inputs */}
-        <Text style={styles.label}>Work Email</Text>
-        <CustomInput
-          placeholder="dr.name@hospital.org"
-          icon="mail-outline"
-          value={email}
-          onChangeText={setEmail}
-          autoComplete="email"
-          textContentType="emailAddress"
-          keyboardType="email-address"
-          accessibilityLabel="Email input"
-        />
+            {/* Inputs */}
+            <Text style={styles.label}>Work Email</Text>
+            <CustomInput
+              placeholder="dr.name@hospital.org"
+              icon="mail-outline"
+              value={email}
+              onChangeText={setEmail}
+              autoComplete="email"
+              textContentType="emailAddress"
+              keyboardType="email-address"
+              accessibilityLabel="Email input"
+            />
 
-        <Text style={styles.label}>Password</Text>
-        <CustomInput
-          placeholder="••••••••••••"
-          isPassword
-          icon="key-outline"
-          value={password}
-          onChangeText={setPassword}
-          autoComplete="password"
-          textContentType="password"
-          accessibilityLabel="Password input"
-        />
+            <Text style={styles.label}>Password</Text>
+            <CustomInput
+              placeholder="••••••••••••"
+              isPassword
+              icon="key-outline"
+              value={password}
+              onChangeText={setPassword}
+              autoComplete="password"
+              textContentType="password"
+              accessibilityLabel="Password input"
+            />
 
-        {/* Forgot Password Link */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate('ForgotPassword')}
-          style={{ alignSelf: 'flex-end', marginBottom: 20, marginTop: 5, padding: 5 }}
-        >
-          <Text style={styles.forgotPassText}>Forgot Password?</Text>
-        </TouchableOpacity>
+            {/* Forgot Password Link */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ForgotPassword')}
+              style={{ alignSelf: 'flex-end', marginBottom: 20, marginTop: 5, padding: 5 }}
+            >
+              <Text style={styles.forgotPassText}>Forgot Password?</Text>
+            </TouchableOpacity>
 
-        {/* Login Button */}
-        <CustomButton
-          title={loading ? "Logging in..." : "Login"}
-          onPress={handleLogin}
-          disabled={loading}
-        />
+            {/* Login Button */}
+            <CustomButton
+              title={loading ? "Logging in..." : "Login"}
+              onPress={handleLogin}
+              disabled={loading}
+            />
 
-        {/* Social Buttons */}
-        <View style={{ marginTop: 20 }}>
-          <TouchableOpacity style={styles.socialButton} onPress={handleAppleLogin}>
-            <Ionicons name="logo-apple" size={22} color="black" />
-            <Text style={styles.socialBtnText}>Continue with Apple ID</Text>
-          </TouchableOpacity>
+            {/* Social Buttons */}
+            <View style={{ marginTop: 20 }}>
+              <TouchableOpacity style={styles.socialButton} onPress={handleAppleLogin}>
+                <Ionicons name="logo-apple" size={22} color="black" />
+                <Text style={styles.socialBtnText}>Continue with Apple ID</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity style={styles.socialButton} onPress={handleGoogleLogin}>
-            <Ionicons name="logo-google" size={22} color="black" />
-            <Text style={styles.socialBtnText}>Continue with Google</Text>
-          </TouchableOpacity>
-        </View>
+              <TouchableOpacity style={styles.socialButton} onPress={handleGoogleLogin}>
+                <Ionicons name="logo-google" size={22} color="black" />
+                <Text style={styles.socialBtnText}>Continue with Google</Text>
+              </TouchableOpacity>
+            </View>
 
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

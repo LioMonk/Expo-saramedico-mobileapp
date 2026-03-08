@@ -115,7 +115,7 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
             </View>
           </View>
           <View style={styles.profileTextContainer}>
-            <Text style={styles.patientName}>{patient?.full_name || patient?.name || 'Patient'}</Text>
+            <Text style={styles.patientName} numberOfLines={1}>{patient?.full_name || patient?.name || 'Patient'}</Text>
             <View style={styles.metaRow}>
               <View style={styles.metaBadge}>
                 <Text style={styles.metaBadgeText}>MRN: {patient?.mrn || 'N/A'}</Text>
@@ -186,7 +186,7 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
                 <View style={styles.pendingHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                     <Ionicons name="time" size={18} color="#F57C00" />
-                    <Text style={styles.pendingDate}>
+                    <Text style={styles.pendingDate} numberOfLines={1}>
                       {new Date(appt.requested_date).toLocaleString()}
                     </Text>
                   </View>
@@ -249,7 +249,7 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
                     />
                   </Menu>
                 </View>
-                <Text style={styles.pendingReason}>Reason: {appt.reason}</Text>
+                <Text style={styles.pendingReason} numberOfLines={1}>Reason: {appt.reason}</Text>
 
                 <View style={styles.pendingActions}>
                   <TouchableOpacity
@@ -839,7 +839,7 @@ function DocumentsView({ documents, loading, patientId, onDeleteSuccess }) {
   const refreshDocs = async () => {
     try {
       const res = await doctorAPI.getPatientDocuments(patientId);
-      const data = res.data?.documents || res.data;
+      const data = res.data?.documents || res.data?.items || res.data;
       setDocsList(Array.isArray(data) ? data : []);
     } catch (_) { }
   };
@@ -855,7 +855,7 @@ function DocumentsView({ documents, loading, patientId, onDeleteSuccess }) {
       setUploading(true);
       setUploadError('');
       try {
-        await doctorAPI.uploadPatientDocument(patientId, file.uri, file.name || 'document');
+        await doctorAPI.uploadPatientDocument(patientId, file.uri, file.name || 'document', file.mimeType || file.type);
         await refreshDocs();
         if (onDeleteSuccess) onDeleteSuccess();
         Alert.alert('✅ Uploaded', 'Document uploaded successfully.');

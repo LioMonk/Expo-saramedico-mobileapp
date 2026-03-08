@@ -129,9 +129,9 @@ export default function AppointmentApprovalScreen({ navigation }) {
                         <Ionicons name="person" size={24} color={COLORS.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.patientName}>{item.patient?.full_name || item.patient_name || 'Unknown Patient'}</Text>
+                        <Text style={styles.patientName} numberOfLines={1} ellipsizeMode="tail">{item.patient?.full_name || item.patient_name || 'Unknown Patient'}</Text>
                         <View style={styles.statusBadge}>
-                            <Text style={styles.statusText}>{item.status?.toUpperCase() || 'PENDING'}</Text>
+                            <Text style={styles.statusText} numberOfLines={1}>{item.status?.toUpperCase() || 'PENDING'}</Text>
                         </View>
                     </View>
                 </View>
@@ -140,7 +140,7 @@ export default function AppointmentApprovalScreen({ navigation }) {
                     <Ionicons name="calendar-outline" size={16} color="#888" />
                     <View style={styles.detailContent}>
                         <Text style={styles.label}>Requested Date</Text>
-                        <Text style={styles.value}>{requestedDate.toLocaleString()}</Text>
+                        <Text style={styles.value} numberOfLines={1}>{requestedDate.toLocaleString()}</Text>
                     </View>
                 </View>
 
@@ -149,7 +149,7 @@ export default function AppointmentApprovalScreen({ navigation }) {
                         <Ionicons name="document-text-outline" size={16} color="#888" />
                         <View style={styles.detailContent}>
                             <Text style={styles.label}>Reason</Text>
-                            <Text style={styles.value}>{item.reason}</Text>
+                            <Text style={styles.value} numberOfLines={2} ellipsizeMode="tail">{item.reason}</Text>
                         </View>
                     </View>
                 ) : null}

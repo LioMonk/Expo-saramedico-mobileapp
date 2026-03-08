@@ -35,7 +35,8 @@ export default function PatientDocumentsScreen({ route, navigation }) {
         setLoading(true);
         try {
             const response = await doctorAPI.getPatientDocuments(patientId);
-            setDocuments(response.data);
+            const docsData = response.data?.documents || response.data;
+            setDocuments(Array.isArray(docsData) ? docsData : []);
         } catch (error) {
             console.error('Load error:', error);
             const errorInfo = ErrorHandler.handleError(error);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-   View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Platform, Image
+   View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Platform, Image, KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -166,235 +166,238 @@ export default function DoctorAddPatientScreen({ navigation, route }) {
 
    return (
       <SafeAreaView style={styles.container}>
-         <View style={styles.content}>
+         <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+         >
+            <View style={styles.content}>
 
-            {/* Header */}
-            <View style={styles.header}>
-               <TouchableOpacity onPress={() => navigation.goBack()}>
-                  <Ionicons name="arrow-back" size={24} color="#333" />
-               </TouchableOpacity>
-               <Text style={styles.headerTitle}>Add New Patient</Text>
-               <TouchableOpacity onPress={() => navigation.goBack()}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-               </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-
-
-
-               {/* Form Fields */}
-               <Text style={styles.sectionLabel}>PERSONAL INFORMATION</Text>
-
-               <Text style={styles.label}>Full Name *</Text>
-               <TextInput
-                  placeholder="Enter patient full name"
-                  style={styles.input}
-                  value={fullName}
-                  onChangeText={setFullName}
-               />
-
-               <Text style={styles.label}>Email Address *</Text>
-               <TextInput
-                  placeholder="patient@example.com"
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-               />
-
-               <Text style={styles.label}>Password *</Text>
-               <View style={styles.passwordRulesBox}>
-                  <Text style={styles.passwordRulesTitle}>Password must contain:</Text>
-                  <View style={styles.ruleItem}>
-                     <Ionicons name={password.length >= 8 ? "checkmark-circle" : "ellipse-outline"} size={16} color={password.length >= 8 ? "#34C759" : "#999"} />
-                     <Text style={styles.ruleText}>At least 8 characters</Text>
-                  </View>
-                  <View style={styles.ruleItem}>
-                     <Ionicons name={/[A-Z]/.test(password) ? "checkmark-circle" : "ellipse-outline"} size={16} color={/[A-Z]/.test(password) ? "#34C759" : "#999"} />
-                     <Text style={styles.ruleText}>One uppercase letter</Text>
-                  </View>
-                  <View style={styles.ruleItem}>
-                     <Ionicons name={/[0-9]/.test(password) ? "checkmark-circle" : "ellipse-outline"} size={16} color={/[0-9]/.test(password) ? "#34C759" : "#999"} />
-                     <Text style={styles.ruleText}>One number</Text>
-                  </View>
-               </View>
-
-               <View style={styles.passwordContainer}>
-                  <TextInput
-                     placeholder="Set login password for patient"
-                     style={styles.passwordInput}
-                     value={password}
-                     onChangeText={setPassword}
-                     secureTextEntry={!showPassword}
-                     autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                     style={styles.eyeIcon}
-                     onPress={() => setShowPassword(!showPassword)}
-                  >
-                     <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#999" />
+               {/* Header */}
+               <View style={styles.header}>
+                  <TouchableOpacity onPress={() => navigation.goBack()}>
+                     <Ionicons name="arrow-back" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <Text style={styles.headerTitle}>Add New Patient</Text>
+                  <TouchableOpacity onPress={() => navigation.goBack()}>
+                     <Text style={styles.cancelText}>Cancel</Text>
                   </TouchableOpacity>
                </View>
-               <PasswordStrengthIndicator password={password} />
 
-               <Text style={styles.label}>Phone Number</Text>
-               <PhoneInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  onChangeE164={setPhoneE164}
-               />
+               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-               <View style={styles.row}>
-                  <View style={{ flex: 1, marginRight: 10 }}>
-                     <Text style={styles.label}>Date of Birth *</Text>
-                     <TouchableOpacity
-                        style={styles.dateInput}
-                        onPress={() => setShowDatePicker(true)}
-                     >
-                        <Text style={{ color: '#333' }}>{formatDate(dateOfBirth)}</Text>
-                        <Ionicons name="calendar-outline" size={18} color="#999" />
-                     </TouchableOpacity>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                     <Text style={styles.label}>Age</Text>
-                     <View style={styles.dateInput}>
-                        <Text style={{ color: '#333', fontWeight: '600' }}>{age} years</Text>
+                  {/* Form Fields */}
+                  <Text style={styles.sectionLabel}>PERSONAL INFORMATION</Text>
+
+                  <Text style={styles.label}>Full Name *</Text>
+                  <TextInput
+                     placeholder="Enter patient full name"
+                     style={styles.input}
+                     value={fullName}
+                     onChangeText={setFullName}
+                  />
+
+                  <Text style={styles.label}>Email Address *</Text>
+                  <TextInput
+                     placeholder="patient@example.com"
+                     style={styles.input}
+                     value={email}
+                     onChangeText={setEmail}
+                     keyboardType="email-address"
+                     autoCapitalize="none"
+                  />
+
+                  <Text style={styles.label}>Password *</Text>
+                  <View style={styles.passwordRulesBox}>
+                     <Text style={styles.passwordRulesTitle}>Password must contain:</Text>
+                     <View style={styles.ruleItem}>
+                        <Ionicons name={password.length >= 8 ? "checkmark-circle" : "ellipse-outline"} size={16} color={password.length >= 8 ? "#34C759" : "#999"} />
+                        <Text style={styles.ruleText}>At least 8 characters</Text>
+                     </View>
+                     <View style={styles.ruleItem}>
+                        <Ionicons name={/[A-Z]/.test(password) ? "checkmark-circle" : "ellipse-outline"} size={16} color={/[A-Z]/.test(password) ? "#34C759" : "#999"} />
+                        <Text style={styles.ruleText}>One uppercase letter</Text>
+                     </View>
+                     <View style={styles.ruleItem}>
+                        <Ionicons name={/[0-9]/.test(password) ? "checkmark-circle" : "ellipse-outline"} size={16} color={/[0-9]/.test(password) ? "#34C759" : "#999"} />
+                        <Text style={styles.ruleText}>One number</Text>
                      </View>
                   </View>
-               </View>
 
-               {showDatePicker && (
-                  <DateTimePicker
-                     value={dateOfBirth}
-                     mode="date"
-                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                     onChange={handleDateChange}
-                     maximumDate={new Date()}
-                  />
-               )}
-
-               <Text style={styles.label}>Gender *</Text>
-               <TouchableOpacity
-                  style={styles.dateInput}
-                  onPress={() => setShowGenderDropdown(true)}
-               >
-                  <Text style={{ color: gender ? '#333' : '#999' }}>
-                     {gender || 'Select gender'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={18} color="#999" />
-               </TouchableOpacity>
-
-               <Text style={[styles.sectionLabel, { marginTop: 25 }]}>ADDITIONAL INFORMATION</Text>
-
-               <Text style={styles.label}>Address</Text>
-               <TextInput
-                  placeholder="Street address, city, state, ZIP"
-                  style={[styles.input, { height: 60 }]}
-                  value={address}
-                  onChangeText={setAddress}
-                  multiline
-               />
-
-               <Text style={styles.label}>Medical History</Text>
-               <TextInput
-                  placeholder="Previous conditions, surgeries..."
-                  style={[styles.input, { height: 80 }]}
-                  value={medicalHistory}
-                  onChangeText={setMedicalHistory}
-                  multiline
-               />
-
-               <Text style={styles.label}>Allergies (comma-separated)</Text>
-               <TextInput
-                  placeholder="e.g. Penicillin, Peanuts"
-                  style={[styles.input, { height: 60 }]}
-                  value={allergies}
-                  onChangeText={setAllergies}
-                  multiline
-               />
-
-               <Text style={styles.label}>Medications (comma-separated)</Text>
-               <TextInput
-                  placeholder="e.g. Aspirin, Lipitor"
-                  style={[styles.input, { height: 60 }]}
-                  value={medications}
-                  onChangeText={setMedications}
-                  multiline
-               />
-
-               <Text style={styles.sectionLabel}>EMERGENCY CONTACT</Text>
-
-               <Text style={styles.label}>Contact Name</Text>
-               <TextInput
-                  placeholder="e.g. Jane Doe"
-                  style={styles.input}
-                  value={emergencyContactName}
-                  onChangeText={setEmergencyContactName}
-               />
-
-               <Text style={styles.label}>Contact Phone</Text>
-               <TextInput
-                  placeholder="e.g. +1 555-1234"
-                  style={styles.input}
-                  value={emergencyContactPhone}
-                  onChangeText={setEmergencyContactPhone}
-                  keyboardType="phone-pad"
-               />
-
-               <View style={{ height: 100 }} />
-            </ScrollView>
-
-            {/* Gender Dropdown Modal */}
-            <Modal
-               visible={showGenderDropdown}
-               transparent
-               animationType="slide"
-               onRequestClose={() => setShowGenderDropdown(false)}
-            >
-               <View style={styles.modalOverlay}>
-                  <TouchableOpacity
-                     style={styles.modalBackdrop}
-                     onPress={() => setShowGenderDropdown(false)}
-                  />
-                  <View style={styles.modalContent}>
-                     <Text style={styles.modalTitle}>Select Gender</Text>
-                     {GENDERS.map((g) => (
-                        <TouchableOpacity
-                           key={g}
-                           style={styles.genderOption}
-                           onPress={() => {
-                              setGender(g);
-                              setShowGenderDropdown(false);
-                           }}
-                        >
-                           <Text style={styles.genderText}>{g}</Text>
-                           {gender === g && (
-                              <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                           )}
-                        </TouchableOpacity>
-                     ))}
+                  <View style={styles.passwordContainer}>
+                     <TextInput
+                        placeholder="Set login password for patient"
+                        style={styles.passwordInput}
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                     />
                      <TouchableOpacity
-                        style={styles.cancelBtn}
-                        onPress={() => setShowGenderDropdown(false)}
+                        style={styles.eyeIcon}
+                        onPress={() => setShowPassword(!showPassword)}
                      >
-                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                        <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#999" />
                      </TouchableOpacity>
                   </View>
+                  <PasswordStrengthIndicator password={password} />
+
+                  <Text style={styles.label}>Phone Number</Text>
+                  <PhoneInput
+                     value={phone}
+                     onChangeText={setPhone}
+                     onChangeE164={setPhoneE164}
+                  />
+
+                  <View style={styles.row}>
+                     <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={styles.label}>Date of Birth *</Text>
+                        <TouchableOpacity
+                           style={styles.dateInput}
+                           onPress={() => setShowDatePicker(true)}
+                        >
+                           <Text style={{ color: '#333' }}>{formatDate(dateOfBirth)}</Text>
+                           <Ionicons name="calendar-outline" size={18} color="#999" />
+                        </TouchableOpacity>
+                     </View>
+                     <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.label}>Age</Text>
+                        <View style={styles.dateInput}>
+                           <Text style={{ color: '#333', fontWeight: '600' }}>{age} years</Text>
+                        </View>
+                     </View>
+                  </View>
+
+                  {showDatePicker && (
+                     <DateTimePicker
+                        value={dateOfBirth}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={handleDateChange}
+                        maximumDate={new Date()}
+                     />
+                  )}
+
+                  <Text style={styles.label}>Gender *</Text>
+                  <TouchableOpacity
+                     style={styles.dateInput}
+                     onPress={() => setShowGenderDropdown(true)}
+                  >
+                     <Text style={{ color: gender ? '#333' : '#999' }}>
+                        {gender || 'Select gender'}
+                     </Text>
+                     <Ionicons name="chevron-down" size={18} color="#999" />
+                  </TouchableOpacity>
+
+                  <Text style={[styles.sectionLabel, { marginTop: 25 }]}>ADDITIONAL INFORMATION</Text>
+
+                  <Text style={styles.label}>Address</Text>
+                  <TextInput
+                     placeholder="Street address, city, state, ZIP"
+                     style={[styles.input, { height: 60 }]}
+                     value={address}
+                     onChangeText={setAddress}
+                     multiline
+                  />
+
+                  <Text style={styles.label}>Medical History</Text>
+                  <TextInput
+                     placeholder="Previous conditions, surgeries..."
+                     style={[styles.input, { height: 80 }]}
+                     value={medicalHistory}
+                     onChangeText={setMedicalHistory}
+                     multiline
+                  />
+
+                  <Text style={styles.label}>Allergies (comma-separated)</Text>
+                  <TextInput
+                     placeholder="e.g. Penicillin, Peanuts"
+                     style={[styles.input, { height: 60 }]}
+                     value={allergies}
+                     onChangeText={setAllergies}
+                     multiline
+                  />
+
+                  <Text style={styles.label}>Medications (comma-separated)</Text>
+                  <TextInput
+                     placeholder="e.g. Aspirin, Lipitor"
+                     style={[styles.input, { height: 60 }]}
+                     value={medications}
+                     onChangeText={setMedications}
+                     multiline
+                  />
+
+                  <Text style={styles.sectionLabel}>EMERGENCY CONTACT</Text>
+
+                  <Text style={styles.label}>Contact Name</Text>
+                  <TextInput
+                     placeholder="e.g. Jane Doe"
+                     style={styles.input}
+                     value={emergencyContactName}
+                     onChangeText={setEmergencyContactName}
+                  />
+
+                  <Text style={styles.label}>Contact Phone</Text>
+                  <TextInput
+                     placeholder="e.g. +1 555-1234"
+                     style={styles.input}
+                     value={emergencyContactPhone}
+                     onChangeText={setEmergencyContactPhone}
+                     keyboardType="phone-pad"
+                  />
+
+                  <View style={{ height: 100 }} />
+               </ScrollView>
+
+               {/* Footer Button */}
+               <View style={styles.footer}>
+                  <CustomButton
+                     title={loading ? 'Saving...' : 'Save Patient'}
+                     onPress={handleSave}
+                     disabled={loading}
+                  />
                </View>
-            </Modal>
 
-            {/* Footer Button */}
-            <View style={styles.footer}>
-               <CustomButton
-                  title={loading ? 'Saving...' : 'Save Patient'}
-                  onPress={handleSave}
-                  disabled={loading}
-               />
             </View>
+         </KeyboardAvoidingView>
 
-         </View>
+         {/* Gender Dropdown Modal */}
+         <Modal
+            visible={showGenderDropdown}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowGenderDropdown(false)}
+         >
+            <View style={styles.modalOverlay}>
+               <TouchableOpacity
+                  style={styles.modalBackdrop}
+                  onPress={() => setShowGenderDropdown(false)}
+               />
+               <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Select Gender</Text>
+                  {GENDERS.map((g) => (
+                     <TouchableOpacity
+                        key={g}
+                        style={styles.genderOption}
+                        onPress={() => {
+                           setGender(g);
+                           setShowGenderDropdown(false);
+                        }}
+                     >
+                        <Text style={styles.genderText}>{g}</Text>
+                        {gender === g && (
+                           <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                        )}
+                     </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                     style={styles.cancelBtn}
+                     onPress={() => setShowGenderDropdown(false)}
+                  >
+                     <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+               </View>
+            </View>
+         </Modal>
       </SafeAreaView>
    );
 }

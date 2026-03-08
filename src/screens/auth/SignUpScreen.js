@@ -8,7 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
-  Image
+  Image,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,10 +25,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Enable warm-up for better UX
 WebBrowser.maybeCompleteAuthSession();
 
-const SPECIALTIES = [
-  'Cardiology', 'Pediatrics', 'Dermatology', 'Orthopedics',
-  'Neurology', 'Psychiatry', 'General Practice', 'Internal Medicine'
-];
+
 
 const REGISTERED_ORGANIZATIONS = [
   'Apollo Hospital', 'Fortis Healthcare', 'Max Healthcare',
@@ -47,9 +46,6 @@ export default function SignUpScreen({ navigation }) {
   const [isChecked, setIsChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showRolePicker, setShowRolePicker] = useState(false);
-  const [showSpecialtyPicker, setShowSpecialtyPicker] = useState(false);
-  const [showCustomSpecialty, setShowCustomSpecialty] = useState(false);
-  const [customSpecialty, setCustomSpecialty] = useState('');
   const [showOrgPicker, setShowOrgPicker] = useState(false);
   const [isOtherOrg, setIsOtherOrg] = useState(false);
   const [customOrgName, setCustomOrgName] = useState('');
@@ -165,7 +161,9 @@ export default function SignUpScreen({ navigation }) {
           fullName,
           role,
           phoneE164 || null,
-          organizationName || null
+          organizationName || null,
+          specialty || null,
+          licenseNumber || null
         );
       }
 
@@ -293,279 +291,284 @@ export default function SignUpScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        {/* Logo Section - Matching Login */}
-        <View style={styles.headerCenter}>
-          <Image
-            source={require('../../../assets/icon_new.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+          {/* Logo Section - Matching Login */}
+          <View style={styles.headerCenter}>
+            <Image
+              source={require('../../../assets/icon_new.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
 
-        {/* Tabs: Login / Sign Up */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={styles.inactiveTab}
-            onPress={() => navigation.navigate('Login')}
-          >
-            <Text style={styles.inactiveTabText}>Login</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.activeTab}>
-            <Text style={styles.activeTabText}>Sign Up</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Role Selector */}
-        <View style={styles.dropdownWrapper}>
-          <Text style={styles.label}>I am a</Text>
-          <TouchableOpacity
-            style={styles.dropdownTrigger}
-            onPress={() => setShowRolePicker(!showRolePicker)}
-            accessibilityLabel="Select your role"
-            accessibilityHint="Choose between doctor or hospital"
-          >
-            <Text style={styles.dropdownText}>{role.charAt(0).toUpperCase() + role.slice(1)}</Text>
-            <Ionicons name={showRolePicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
-          </TouchableOpacity>
-          {showRolePicker && (
-            <View style={styles.dropdownList}>
-              {['doctor', 'hospital'].map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={styles.dropdownItem}
-                  onPress={() => { setRole(r); setShowRolePicker(false); }}
-                >
-                  <Text style={styles.dropdownItemText}>{r.charAt(0).toUpperCase() + r.slice(1)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-        <Text style={styles.helperText}>Role defines access to clinical features.</Text>
-
-        {(role === 'hospital' || role === 'doctor') && (
-          <View style={{ zIndex: 1000 }}>
-            <Text style={styles.label}>
-              {role === 'hospital' ? 'Organization Name *' : 'Organization Name (Optional)'}
-            </Text>
-
+          {/* Tabs: Login / Sign Up */}
+          <View style={styles.tabContainer}>
             <TouchableOpacity
-              style={[styles.pickerButton, errors.organizationName && { borderColor: COLORS.error }]}
-              onPress={() => setShowOrgPicker(!showOrgPicker)}
+              style={styles.inactiveTab}
+              onPress={() => navigation.navigate('Login')}
             >
-              <Ionicons name="business-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
-              <Text style={[styles.pickerButtonText, !organizationName && { color: '#999' }]}>
-                {organizationName || 'Select Organization'}
-              </Text>
-              <Ionicons name={showOrgPicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+              <Text style={styles.inactiveTabText}>Login</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.activeTab}>
+              <Text style={styles.activeTabText}>Sign Up</Text>
+            </TouchableOpacity>
+          </View>
 
-            {showOrgPicker && (
-              <View style={styles.pickerDropdown}>
-                <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 200 }}>
-                  {REGISTERED_ORGANIZATIONS.map((org) => (
+          {/* Role Selector */}
+          <View style={styles.dropdownWrapper}>
+            <Text style={styles.label}>I am a</Text>
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => setShowRolePicker(!showRolePicker)}
+              accessibilityLabel="Select your role"
+              accessibilityHint="Choose between doctor or hospital"
+            >
+              <Text style={styles.dropdownText}>{role.charAt(0).toUpperCase() + role.slice(1)}</Text>
+              <Ionicons name={showRolePicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+            </TouchableOpacity>
+            {showRolePicker && (
+              <View style={styles.dropdownList}>
+                {['doctor', 'hospital'].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    style={styles.dropdownItem}
+                    onPress={() => { setRole(r); setShowRolePicker(false); }}
+                  >
+                    <Text style={styles.dropdownItemText}>{r.charAt(0).toUpperCase() + r.slice(1)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+          <Text style={styles.helperText}>Role defines access to clinical features.</Text>
+
+          {/* Doctor-specific fields removed as per request (specialty, license number) */}
+
+          {(role === 'hospital' || role === 'doctor') && (
+            <View style={{ zIndex: 1000 }}>
+              <Text style={styles.label}>
+                {role === 'hospital' ? 'Organization Name *' : 'Organization Name (Optional)'}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.pickerButton, errors.organizationName && { borderColor: COLORS.error }]}
+                onPress={() => setShowOrgPicker(!showOrgPicker)}
+              >
+                <Ionicons name="business-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
+                <Text style={[styles.pickerButtonText, !organizationName && { color: '#999' }]}>
+                  {organizationName || 'Select Organization'}
+                </Text>
+                <Ionicons name={showOrgPicker ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+              </TouchableOpacity>
+
+              {showOrgPicker && (
+                <View style={styles.pickerDropdown}>
+                  <ScrollView nestedScrollEnabled={true} style={{ maxHeight: 200 }}>
+                    {REGISTERED_ORGANIZATIONS.map((org) => (
+                      <TouchableOpacity
+                        key={org}
+                        style={styles.pickerItem}
+                        onPress={() => {
+                          setOrganizationName(org);
+                          setIsOtherOrg(false);
+                          setShowOrgPicker(false);
+                        }}
+                      >
+                        <Text style={styles.pickerItemText}>{org}</Text>
+                      </TouchableOpacity>
+                    ))}
                     <TouchableOpacity
-                      key={org}
-                      style={styles.pickerItem}
+                      style={[styles.pickerItem, { borderBottomWidth: 0, backgroundColor: '#f9f9f9' }]}
                       onPress={() => {
-                        setOrganizationName(org);
-                        setIsOtherOrg(false);
+                        setOrganizationName('');
+                        setIsOtherOrg(true);
                         setShowOrgPicker(false);
                       }}
                     >
-                      <Text style={styles.pickerItemText}>{org}</Text>
+                      <Text style={[styles.pickerItemText, { fontWeight: '600', color: COLORS.primary }]}>
+                        + Other / Custom
+                      </Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[styles.pickerItem, { borderBottomWidth: 0, backgroundColor: '#f9f9f9' }]}
-                    onPress={() => {
-                      setOrganizationName('');
-                      setIsOtherOrg(true);
-                      setShowOrgPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerItemText, { fontWeight: '600', color: COLORS.primary }]}>
-                      + Other / Custom
-                    </Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
-            )}
+                  </ScrollView>
+                </View>
+              )}
 
-            {isOtherOrg && (
-              <View style={{ marginTop: 10 }}>
-                <CustomInput
-                  placeholder="Enter Organization Name"
-                  icon="business-outline"
-                  value={organizationName}
-                  onChangeText={(text) => setOrganizationName(text)}
-                  error={errors.organizationName}
-                  accessibilityLabel="Custom organization name input"
-                />
-              </View>
-            )}
+              {isOtherOrg && (
+                <View style={{ marginTop: 10 }}>
+                  <CustomInput
+                    placeholder="Enter Organization Name"
+                    icon="business-outline"
+                    value={organizationName}
+                    onChangeText={(text) => setOrganizationName(text)}
+                    error={errors.organizationName}
+                    accessibilityLabel="Custom organization name input"
+                  />
+                </View>
+              )}
 
-            {errors.organizationName && <Text style={styles.errorText}>{errors.organizationName}</Text>}
+              {errors.organizationName && <Text style={styles.errorText}>{errors.organizationName}</Text>}
+            </View>
+          )}
+
+          {/* Full Name / Admin Name */}
+          <Text style={styles.label}>{role === 'hospital' ? 'Admin Name *' : 'Full Name *'}</Text>
+          <CustomInput
+            placeholder="John Doe"
+            icon="person-outline"
+            value={fullName}
+            onChangeText={setFullName}
+            error={errors.fullName}
+            autoComplete="name"
+            textContentType="name"
+            accessibilityLabel={role === 'hospital' ? "Admin name input" : "Full name input"}
+          />
+
+          {/* Work Email */}
+          <Text style={styles.label}>Email *</Text>
+          <CustomInput
+            placeholder="your.email@example.com"
+            icon="mail-outline"
+            value={email}
+            onChangeText={setEmail}
+            error={errors.email}
+            autoComplete="email"
+            textContentType="emailAddress"
+            keyboardType="email-address"
+            accessibilityLabel="Email input"
+          />
+
+          {/* Phone Number */}
+          <Text style={styles.label}>Phone</Text>
+          <PhoneInput
+            value={phone}
+            onChangeText={setPhone}
+            onChangeE164={setPhoneE164}
+            error={errors.phone}
+          />
+
+          {/* Password */}
+          <Text style={styles.label}>Password *</Text>
+
+          {/* Password Rules - Visible Upfront */}
+          <View style={styles.passwordRulesBox}>
+            <Text style={styles.passwordRulesTitle}>Password must contain:</Text>
+            <View style={styles.ruleItem}>
+              <Ionicons
+                name={password.length >= 8 ? "checkmark-circle" : "ellipse-outline"}
+                size={16}
+                color={password.length >= 8 ? "#34C759" : "#999"}
+              />
+              <Text style={styles.ruleText}>At least 8 characters</Text>
+            </View>
+            <View style={styles.ruleItem}>
+              <Ionicons
+                name={/[A-Z]/.test(password) ? "checkmark-circle" : "ellipse-outline"}
+                size={16}
+                color={/[A-Z]/.test(password) ? "#34C759" : "#999"}
+              />
+              <Text style={styles.ruleText}>One uppercase letter</Text>
+            </View>
+            <View style={styles.ruleItem}>
+              <Ionicons
+                name={/[0-9]/.test(password) ? "checkmark-circle" : "ellipse-outline"}
+                size={16}
+                color={/[0-9]/.test(password) ? "#34C759" : "#999"}
+              />
+              <Text style={styles.ruleText}>One number</Text>
+            </View>
           </View>
-        )}
 
-        {/* Full Name / Admin Name */}
-        <Text style={styles.label}>{role === 'hospital' ? 'Admin Name *' : 'Full Name *'}</Text>
-        <CustomInput
-          placeholder="John Doe"
-          icon="person-outline"
-          value={fullName}
-          onChangeText={setFullName}
-          error={errors.fullName}
-          autoComplete="name"
-          textContentType="name"
-          accessibilityLabel={role === 'hospital' ? "Admin name input" : "Full name input"}
-        />
+          <CustomInput
+            placeholder="••••••••••••"
+            isPassword
+            value={password}
+            onChangeText={setPassword}
+            error={errors.password}
+            autoComplete="password-new"
+            textContentType="newPassword"
+            accessibilityLabel="Password input"
+          />
 
-        {/* Work Email */}
-        <Text style={styles.label}>Email *</Text>
-        <CustomInput
-          placeholder="your.email@example.com"
-          icon="mail-outline"
-          value={email}
-          onChangeText={setEmail}
-          error={errors.email}
-          autoComplete="email"
-          textContentType="emailAddress"
-          keyboardType="email-address"
-          accessibilityLabel="Email input"
-        />
+          {/* Password Strength Indicator */}
+          <PasswordStrengthIndicator password={password} />
 
-        {/* Phone Number */}
-        <Text style={styles.label}>Phone</Text>
-        <PhoneInput
-          value={phone}
-          onChangeText={setPhone}
-          onChangeE164={setPhoneE164}
-          error={errors.phone}
-        />
+          {/* Confirm Password */}
+          {role !== 'hospital' && (
+            <>
+              <Text style={styles.label}>Confirm Password *</Text>
+              <CustomInput
+                placeholder="••••••••••••"
+                isPassword
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                error={errors.confirmPassword}
+                autoComplete="password-new"
+                textContentType="newPassword"
+                accessibilityLabel="Confirm password input"
+              />
 
-        {/* Doctor-Specific Fields (Removed per API Schema sync rules) */}
+              {/* Password Match Indicator */}
+              {confirmPassword && (
+                <View style={styles.matchIndicator}>
+                  <Ionicons
+                    name={password === confirmPassword ? "checkmark-circle" : "close-circle"}
+                    size={16}
+                    color={password === confirmPassword ? "#34C759" : "#FF3B30"}
+                  />
+                  <Text style={[styles.matchText, { color: password === confirmPassword ? "#34C759" : "#FF3B30" }]}>
+                    {password === confirmPassword ? "Passwords match" : "Passwords do not match"}
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
 
-        {/* Password */}
-        <Text style={styles.label}>Password *</Text>
-
-        {/* Password Rules - Visible Upfront */}
-        <View style={styles.passwordRulesBox}>
-          <Text style={styles.passwordRulesTitle}>Password must contain:</Text>
-          <View style={styles.ruleItem}>
-            <Ionicons
-              name={password.length >= 8 ? "checkmark-circle" : "ellipse-outline"}
-              size={16}
-              color={password.length >= 8 ? "#34C759" : "#999"}
-            />
-            <Text style={styles.ruleText}>At least 8 characters</Text>
+          {/* HIPAA Compliance Note */}
+          <View style={styles.hipaaNote}>
+            <Ionicons name="shield-checkmark-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.hipaaText}>HIPAA compliant and secure</Text>
           </View>
-          <View style={styles.ruleItem}>
-            <Ionicons
-              name={/[A-Z]/.test(password) ? "checkmark-circle" : "ellipse-outline"}
-              size={16}
-              color={/[A-Z]/.test(password) ? "#34C759" : "#999"}
-            />
-            <Text style={styles.ruleText}>One uppercase letter</Text>
-          </View>
-          <View style={styles.ruleItem}>
-            <Ionicons
-              name={/[0-9]/.test(password) ? "checkmark-circle" : "ellipse-outline"}
-              size={16}
-              color={/[0-9]/.test(password) ? "#34C759" : "#999"}
-            />
-            <Text style={styles.ruleText}>One number</Text>
-          </View>
-        </View>
 
-        <CustomInput
-          placeholder="••••••••••••"
-          isPassword
-          value={password}
-          onChangeText={setPassword}
-          error={errors.password}
-          autoComplete="password-new"
-          textContentType="newPassword"
-          accessibilityLabel="Password input"
-        />
-
-        {/* Password Strength Indicator */}
-        <PasswordStrengthIndicator password={password} />
-
-        {/* Confirm Password */}
-        {role !== 'hospital' && (
-          <>
-            <Text style={styles.label}>Confirm Password *</Text>
-            <CustomInput
-              placeholder="••••••••••••"
-              isPassword
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              error={errors.confirmPassword}
-              autoComplete="password-new"
-              textContentType="newPassword"
-              accessibilityLabel="Confirm password input"
-            />
-
-            {/* Password Match Indicator */}
-            {confirmPassword && (
-              <View style={styles.matchIndicator}>
-                <Ionicons
-                  name={password === confirmPassword ? "checkmark-circle" : "close-circle"}
-                  size={16}
-                  color={password === confirmPassword ? "#34C759" : "#FF3B30"}
-                />
-                <Text style={[styles.matchText, { color: password === confirmPassword ? "#34C759" : "#FF3B30" }]}>
-                  {password === confirmPassword ? "Passwords match" : "Passwords do not match"}
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-
-        {/* HIPAA Compliance Note */}
-        <View style={styles.hipaaNote}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.hipaaText}>HIPAA compliant and secure</Text>
-        </View>
-
-        {/* Terms Checkbox */}
-        <TouchableOpacity
-          style={styles.checkboxContainer}
-          onPress={() => setIsChecked(!isChecked)}
-          accessibilityLabel="Agree to terms and privacy policy"
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: isChecked }}
-        >
-          <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-            {isChecked && <Ionicons name="checkmark" size={14} color="white" />}
-          </View>
-          <Text style={styles.checkboxText}>
-            I agree to the <Text style={styles.linkText}>Terms & Service</Text> and <Text style={styles.linkText}>Privacy Policy</Text>
-          </Text>
-        </TouchableOpacity>
-
-        {/* Sign Up Button */}
-        <CustomButton
-          title={loading ? "Creating Account..." : "Sign Up"}
-          onPress={handleSignUp}
-          disabled={loading}
-        />
-
-        {/* Social Buttons */}
-        <View style={{ marginTop: 20 }}>
-          <TouchableOpacity style={styles.socialButton} onPress={handleGoogleSignUp}>
-            <Ionicons name="logo-google" size={22} color="black" />
-            <Text style={styles.socialBtnText}>Continue with Google</Text>
+          {/* Terms Checkbox */}
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setIsChecked(!isChecked)}
+            accessibilityLabel="Agree to terms and privacy policy"
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isChecked }}
+          >
+            <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+              {isChecked && <Ionicons name="checkmark" size={14} color="white" />}
+            </View>
+            <Text style={styles.checkboxText}>
+              I agree to the <Text style={styles.linkText}>Terms & Service</Text> and <Text style={styles.linkText}>Privacy Policy</Text>
+            </Text>
           </TouchableOpacity>
-        </View>
 
-        {loading && <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />}
+          {/* Sign Up Button */}
+          <CustomButton
+            title={loading ? "Creating Account..." : "Sign Up"}
+            onPress={handleSignUp}
+            disabled={loading}
+          />
 
-      </ScrollView>
+          {/* Social Buttons */}
+          <View style={{ marginTop: 20 }}>
+            <TouchableOpacity style={styles.socialButton} onPress={handleGoogleSignUp}>
+              <Ionicons name="logo-google" size={22} color="black" />
+              <Text style={styles.socialBtnText}>Continue with Google</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loading && <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />}
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -302,12 +302,14 @@ const AuthService = {
             });
 
             if (!response.ok) {
-                if (response.status === 401) {
-                    // Token expired — attempt refresh
+                if (response.status === 401 || response.status === 403) {
+                    // Token expired or invalid — attempt refresh
                     try {
                         await this.refreshAccessToken();
                         return this.restoreSession(); // Retry once with new token
                     } catch {
+                        // Refresh failed or forbidden — Clear session
+                        await this.logout();
                         return { isAuthenticated: false, user: null, navTarget: 'Auth' };
                     }
                 }
@@ -325,14 +327,16 @@ const AuthService = {
                 navTarget: ROLE_NAVIGATION_MAP[user.role] || 'Auth',
             };
         } catch (error) {
-            // 403 = stale session, network error, etc. — use cached user data
-            const user = await storage.getUserData();
-            if (user && Object.keys(user).length > 0) {
-                return {
-                    isAuthenticated: true,
-                    user,
-                    navTarget: ROLE_NAVIGATION_MAP[user.role] || 'Auth',
-                };
+            // ONLY fallback to cache on network errors, not auth errors
+            if (error.message?.includes('Network Error') || error.name === 'TypeError') {
+                const user = await storage.getUserData();
+                if (user && Object.keys(user).length > 0) {
+                    return {
+                        isAuthenticated: true,
+                        user,
+                        navTarget: ROLE_NAVIGATION_MAP[user.role] || 'Auth',
+                    };
+                }
             }
             return { isAuthenticated: false, user: null, navTarget: 'Auth' };
         }
