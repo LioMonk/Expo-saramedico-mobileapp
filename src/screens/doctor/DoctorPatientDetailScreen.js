@@ -49,9 +49,16 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
       // Load visits/records
       try {
         const visitsResponse = await doctorAPI.getRecords(id);
-        setVisits((visitsResponse.data || []).slice(0, 5)); // Top 5
+        const data = visitsResponse.data;
+        let consults = [];
+        if (Array.isArray(data)) consults = data;
+        else if (data?.consultations && Array.isArray(data.consultations)) consults = data.consultations;
+        else if (data?.items && Array.isArray(data.items)) consults = data.items;
+        else if (data?.data && Array.isArray(data.data)) consults = data.data;
+
+        setVisits(consults.slice(0, 5)); // Top 5
       } catch (err) {
-        console.log('No visits found');
+        console.log('No visits found', err);
         setVisits([]);
       }
 
@@ -163,13 +170,6 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.quickVitalsBtn}
-          onPress={() => setActiveTab('Vitals')}
-        >
-          <Ionicons name="pulse" size={18} color="white" />
-          <Text style={styles.quickVitalsText}>Update Vitals</Text>
-        </TouchableOpacity>
         {/* Pending Appointments Section */}
         {pendingAppointments.length > 0 && (
           <View style={styles.pendingContainer}>
@@ -323,6 +323,8 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
 // --- SUB-COMPONENTS ---
 
 function VisitsView({ navigation, visits, upcomingAppointments, loading, patient }) {
+  const [subTab, setSubTab] = useState('upcoming'); // 'upcoming' or 'recent'
+
   if (loading) {
     return (
       <View style={{ padding: 40, alignItems: 'center' }}>
@@ -344,80 +346,130 @@ function VisitsView({ navigation, visits, upcomingAppointments, loading, patient
   }
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
-      {upcomingList.length > 0 && (
-        <>
-          <Text style={styles.sectionLabel}>APPOINTMENTS</Text>
-          {upcomingList.map((appt, index) => {
-            const isPassed = new Date(appt.requested_date) < new Date();
-            const statusText = isPassed ? 'PASSED' : 'UPCOMING';
+    <View style={{ flex: 1 }}>
+      {/* Sub-tabs for filtering */}
+      <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderRadius: 10, padding: 4, marginBottom: 16 }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: subTab === 'upcoming' ? '#FFF' : 'transparent', shadowColor: subTab === 'upcoming' ? '#000' : 'transparent', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: subTab === 'upcoming' ? 2 : 0 }}
+          onPress={() => setSubTab('upcoming')}
+        >
+          <Text style={{ fontSize: 13, fontWeight: subTab === 'upcoming' ? '600' : '500', color: subTab === 'upcoming' ? '#1E293B' : '#64748B' }}>
+            Appointments ({upcomingList.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: subTab === 'recent' ? '#FFF' : 'transparent', shadowColor: subTab === 'recent' ? '#000' : 'transparent', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: subTab === 'recent' ? 2 : 0 }}
+          onPress={() => setSubTab('recent')}
+        >
+          <Text style={{ fontSize: 13, fontWeight: subTab === 'recent' ? '600' : '500', color: subTab === 'recent' ? '#1E293B' : '#64748B' }}>
+            Recent Visits ({visitsList.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-            return (
-              <TouchableOpacity
-                key={`up-${appt.id || index}`}
-                style={[styles.visitCard, { borderColor: '#BBDEFB', backgroundColor: '#E3F2FD' }]}
-                onPress={() => navigation.navigate('AppointmentDetail', {
-                  appointment: { ...appt, patient_name: patient?.full_name || patient?.name || 'Patient' },
-                  role: 'doctor'
-                })}
-              >
-                <View style={styles.visitHeader}>
-                  <Text style={styles.visitDate}>
-                    {new Date(appt.requested_date).toLocaleString()}
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {subTab === 'upcoming' && (
+          upcomingList.length > 0 ? (
+            upcomingList.map((appt, index) => {
+              const isPassed = new Date(appt.requested_date) < new Date();
+              const statusText = isPassed ? 'PASSED' : 'UPCOMING';
+
+              return (
+                <TouchableOpacity
+                  key={`up-${appt.id || index}`}
+                  style={[styles.visitCard, { borderColor: '#BBDEFB', backgroundColor: '#E3F2FD' }]}
+                  onPress={() => navigation.navigate('AppointmentDetail', {
+                    appointment: { ...appt, patient_name: patient?.full_name || patient?.name || 'Patient' },
+                    role: 'doctor'
+                  })}
+                >
+                  <View style={styles.visitHeader}>
+                    <Text style={styles.visitDate}>
+                      {new Date(appt.requested_date).toLocaleString()}
+                    </Text>
+                    {appt.join_url && !isPassed && (
+                      <TouchableOpacity
+                        style={[styles.viewBtn, { backgroundColor: '#1E88E5' }]}
+                        onPress={() => WebBrowser.openBrowserAsync(appt.join_url)}
+                      >
+                        <Text style={[styles.viewBtnText, { color: 'white' }]}>Join Call</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <Text style={styles.visitTitle}>{appt.reason || 'General Checkup'}</Text>
+                  <Text style={styles.visitDesc} numberOfLines={2}>
+                    Status: {appt.status.toUpperCase()} ({statusText})
                   </Text>
-                  {appt.join_url && !isPassed && (
-                    <TouchableOpacity
-                      style={[styles.viewBtn, { backgroundColor: '#1E88E5' }]}
-                      onPress={() => WebBrowser.openBrowserAsync(appt.join_url)}
-                    >
-                      <Text style={[styles.viewBtnText, { color: 'white' }]}>Join Call</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <Text style={styles.visitTitle}>{appt.reason || 'General Checkup'}</Text>
-                <Text style={styles.visitDesc} numberOfLines={2}>
-                  Status: {appt.status.toUpperCase()} ({statusText})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </>
-      )}
-
-      {visitsList.length > 0 && (
-        <>
-          <Text style={[styles.sectionLabel, { marginTop: 10 }]}>PAST CONSULTATIONS</Text>
-          {visitsList.map((visit, index) => (
-            <View key={`past-${visit.id || index}`} style={styles.visitCard}>
-              <View style={styles.visitHeader}>
-                <Text style={styles.visitDate}>
-                  {visit.scheduled_at || visit.visit_date || visit.created_at || 'No date'}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity
-                    style={styles.viewBtn}
-                    onPress={() => navigation.navigate('DoctorPostVisitScreen', { patient, visit })}
-                  >
-                    <Text style={styles.viewBtnText}>View</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.viewBtn, { backgroundColor: '#E8F5E9' }]}
-                    onPress={() => navigation.navigate('DoctorPostVisitScreen', { patient, visit, showSoap: true })}
-                  >
-                    <Text style={[styles.viewBtnText, { color: '#2E7D32' }]}>SOAP</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <Text style={styles.visitTitle}>{visit.visit_type || visit.reason || 'General Visit'}</Text>
-              <Text style={styles.visitDesc} numberOfLines={3}>
-                {visit.notes || visit.description || 'No description available'}
-              </Text>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <Text style={{ color: '#94A3B8', fontSize: 13 }}>No pending or upcoming appointments.</Text>
             </View>
-          ))}
-        </>
-      )}
-      <View style={{ height: 20 }} />
-    </ScrollView>
+          )
+        )}
+
+        {subTab === 'recent' && (
+          visitsList.length > 0 ? (
+            visitsList.map((visit, index) => {
+              const isMeetingCompleted = visit.status?.toLowerCase() === 'completed';
+              const isSoapCompleted = true;
+
+              return (
+                <View key={`past-${visit.id || index}`} style={styles.visitCard}>
+                  <View style={[styles.visitHeader, { marginBottom: 8, paddingBottom: 0 }]}>
+                    <Text style={[styles.visitDate, { fontSize: 13, fontWeight: '700', color: '#64748B' }]}>
+                      { visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleDateString() : (visit.scheduled_at ? new Date(visit.scheduled_at).toLocaleDateString() : (visit.visit_date || visit.created_at || 'Recent Visit')) }
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+                    <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, backgroundColor: isMeetingCompleted ? '#F0FDF4' : '#F8FAFC', borderWidth: 1, borderColor: isMeetingCompleted ? '#BBF7D0' : '#E2E8F0' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: isMeetingCompleted ? '#16A34A' : '#64748B' }}>
+                        MEETING: {isMeetingCompleted ? 'COMPLETED' : (visit.status?.toUpperCase() || 'SCHEDULED')}
+                      </Text>
+                    </View>
+                    <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, backgroundColor: isSoapCompleted ? '#F0FDF4' : '#F8FAFC', borderWidth: 1, borderColor: isSoapCompleted ? '#BBF7D0' : '#E2E8F0' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: isSoapCompleted ? '#16A34A' : '#64748B' }}>
+                        SOAP: {isSoapCompleted ? 'COMPLETED' : 'PENDING'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 16 }} numberOfLines={1}>
+                    Patient encounter session recorded and processed.
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => navigation.navigate('DoctorSoapViewScreen', { consultationId: visit.id, consultation: visit })}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A' }}>View SOAP Note</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ width: 44, height: 44, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#FEE2E2', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => {
+                        Alert.alert('Delete', 'Consultation deletion not implemented in this view natively yet.');
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <Text style={{ color: '#94A3B8', fontSize: 13 }}>No recent visits found.</Text>
+            </View>
+          )
+        )}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </View>
   );
 }
 
@@ -528,7 +580,7 @@ function VitalsView({ patientId }) {
       <View style={vstyles.header}>
         <Text style={vstyles.title}>Patient Health Metrics</Text>
         <TouchableOpacity style={vstyles.addBtn} onPress={() => { setShowForm(true); setEditingId(null); }}>
-          <Ionicons name="add" size={18} color="white" />
+          <Ionicons name="pulse" size={18} color="white" />
           <Text style={vstyles.addBtnText}>Add Metric</Text>
         </TouchableOpacity>
       </View>

@@ -165,22 +165,21 @@ export default function ConsultationDetailScreen({ route, navigation }) {
                     </View>
 
                     {soapNote ? (
-                        <View style={styles.soapCard}>
+                        <View style={[styles.soapCard, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
                             <View style={styles.soapSection}>
-                                <Text style={styles.soapLabel}>SUBJECTIVE</Text>
-                                <Text style={styles.soapValue}>{soapNote.subjective || 'Not available'}</Text>
-                            </View>
-                            <View style={styles.soapSection}>
-                                <Text style={styles.soapLabel}>OBJECTIVE</Text>
-                                <Text style={styles.soapValue}>{soapNote.objective || 'Not available'}</Text>
-                            </View>
-                            <View style={styles.soapSection}>
-                                <Text style={styles.soapLabel}>ASSESSMENT</Text>
-                                <Text style={styles.soapValue}>{soapNote.assessment || 'Not available'}</Text>
-                            </View>
-                            <View style={styles.soapSection}>
-                                <Text style={styles.soapLabel}>PLAN</Text>
-                                <Text style={styles.soapValue}>{soapNote.plan || 'Not available'}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                    <Ionicons name="heart" size={18} color="#0284C7" style={{ marginRight: 6 }} />
+                                    <Text style={[styles.soapLabel, { color: '#0284C7', marginBottom: 0 }]}>DOCTOR'S SUMMARY</Text>
+                                </View>
+                                {soapNote.patient_summary ? (
+                                    <Text style={[styles.soapValue, { color: '#0369A1', fontSize: 15, lineHeight: 24 }]}>
+                                        {soapNote.patient_summary}
+                                    </Text>
+                                ) : (
+                                    <Text style={[styles.soapValue, { color: '#64748B', fontStyle: 'italic' }]}>
+                                        Summary is being prepared by your doctor. Please check back later.
+                                    </Text>
+                                )}
                             </View>
                         </View>
                     ) : consultation.hasSoapNote ? (

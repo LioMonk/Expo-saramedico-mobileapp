@@ -574,6 +574,10 @@ export const consultationAPI = {
 
   // GET /consultations/{id}/soap-note - Poll for SOAP Note
   getSoapNote: (id) => api.get(`/consultations/${id}/soap-note`),
+
+  // PATCH /consultations/{id}/soap-note - Edit SOAP Note
+  patchSoapNote: (id, soapData) => api.patch(`/consultations/${id}/soap-note`, soapData),
+  
   // POST /consultations
   createConsultation: (data) => api.post('/consultations', data),
 
@@ -593,6 +597,14 @@ export const consultationAPI = {
   getConsultationByPatient: (patientId) => api.get('/consultations/lookup/by-patient', {
     params: { patient_id: patientId }
   }),
+  
+  // --- New Feature Parity Endpoints ---
+  
+  // GET /consultations/{id}/transcript-status - Verify Drive for recording
+  getTranscriptStatus: (id) => api.get(`/consultations/${id}/transcript-status`),
+  
+  // POST /consultations/{id}/generate-soap - Manually trigger generation
+  triggerSoapGeneration: (id) => api.post(`/consultations/${id}/generate-soap`),
 };
 
 // ==================== APPOINTMENT API ====================
