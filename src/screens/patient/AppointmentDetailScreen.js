@@ -90,13 +90,25 @@ export default function AppointmentDetailScreen({ route, navigation }) {
         cancelled: '#9E9E9E'
     };
 
-    if (!appointment && !loading) {
+    if (loading) {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.centered}>
-                    <Text>Appointment not found or data missing.</Text>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={{ marginTop: 10, color: '#666' }}>Loading appointment details...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (!appointment) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.centered}>
+                    <Ionicons name="alert-circle-outline" size={48} color="#CCC" />
+                    <Text style={{ marginTop: 10, color: '#666' }}>Appointment not found or data missing.</Text>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                        <Text style={{ color: COLORS.primary }}>Go Back</Text>
+                        <Text style={{ color: COLORS.primary, fontWeight: 'bold' }}>Go Back</Text>
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
@@ -121,15 +133,15 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                         <>
                             <Image
                                 source={{
-                                    uri: appointment.patient_photo_url ||
-                                        'https://ui-avatars.com/api/?name=' + encodeURIComponent(appointment.patient_name || 'Patient') + '&background=random',
+                                    uri: appointment?.patient_photo_url ||
+                                        'https://ui-avatars.com/api/?name=' + encodeURIComponent(appointment?.patient_name || 'Patient') + '&background=random',
                                 }}
                                 style={styles.doctorImage}
                             />
                             <View style={styles.doctorInfo}>
                                 <Text style={styles.doctorName}>
                                     {(() => {
-                                        let name = appointment.patient_name || 'Patient';
+                                        let name = appointment?.patient_name || 'Patient';
                                         if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown patient') name = 'Patient';
                                         return name;
                                     })()}
@@ -141,15 +153,15 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                         <>
                             <Image
                                 source={{
-                                    uri: appointment.doctor_photo_url ||
-                                        'https://ui-avatars.com/api/?name=' + encodeURIComponent(appointment.doctor_name || 'Doctor') + '&background=random',
+                                    uri: appointment?.doctor_photo_url ||
+                                        'https://ui-avatars.com/api/?name=' + encodeURIComponent(appointment?.doctor_name || 'Doctor') + '&background=random',
                                 }}
                                 style={styles.doctorImage}
                             />
                             <View style={styles.doctorInfo}>
                                 <Text style={styles.doctorName}>
                                     {(() => {
-                                        let name = appointment.doctor_name || 'Doctor';
+                                        let name = appointment?.doctor_name || 'Doctor';
                                         if (name.toLowerCase() === 'encrypted' || name.toLowerCase() === 'unknown doctor') name = 'Doctor';
                                         return name.startsWith('Dr. ') ? name : `Dr. ${name}`;
                                     })()}
@@ -165,30 +177,30 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                 <View style={styles.detailCard}>
                     <View style={styles.detailRow}>
                         <Ionicons name="calendar-outline" size={20} color="#666" />
-                        <Text style={styles.detailText}>{moment(appointment.requested_date).format('dddd, MMMM Do YYYY')}</Text>
+                        <Text style={styles.detailText}>{moment(appointment?.requested_date).format('dddd, MMMM Do YYYY')}</Text>
                     </View>
                     <View style={styles.detailRow}>
                         <Ionicons name="time-outline" size={20} color="#666" />
-                        <Text style={styles.detailText}>{moment(appointment.requested_date).format('h:mm A')}</Text>
+                        <Text style={styles.detailText}>{moment(appointment?.requested_date).format('h:mm A')}</Text>
                     </View>
                     <View style={styles.detailRow}>
                         <Ionicons name="information-circle-outline" size={20} color="#666" />
-                        <Text style={styles.detailText}>{appointment.reason || 'No reason specified'}</Text>
+                        <Text style={styles.detailText}>{appointment?.reason || 'No reason specified'}</Text>
                     </View>
 
                     <View style={styles.statusRow}>
                         <Text style={styles.statusLabel}>Status:</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: statusColors[appointment.status?.toLowerCase()] || '#DDD' }]}>
-                            <Text style={styles.statusText}>{appointment.status?.toUpperCase() || 'UNKNOWN'}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: statusColors[appointment?.status?.toLowerCase()] || '#DDD' }]}>
+                            <Text style={styles.statusText}>{appointment?.status?.toUpperCase() || 'UNKNOWN'}</Text>
                         </View>
                     </View>
 
                     {/* Join Link logic for accepted */}
-                    {appointment.status === 'accepted' && (appointment.join_url || appointment.meet_link) && (
+                    {appointment?.status === 'accepted' && (appointment?.join_url || appointment?.meet_link) && (
                         <TouchableOpacity
                             style={styles.joinButton}
                             onPress={() => {
-                                const url = appointment.join_url || appointment.meet_link;
+                                const url = appointment?.join_url || appointment?.meet_link;
                                 console.log('Join button clicked, url is:', url);
                                 if (url && (url.startsWith('http') || url.startsWith('https'))) {
                                     console.log('Attempting to open link externally');
@@ -212,9 +224,8 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                 <Text style={styles.sectionTitle}>
                     {role === 'doctor' ? 'Past History with Patient' : 'Past History By Doctor'}
                 </Text>
-                {loading ? (
-                    <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 20 }} />
-                ) : history.length > 0 ? (
+                {/* Loader is already handled by section logic if history is fetching */}
+                {history.length > 0 ? (
                     history.map(pastAppt => (
                         <View key={pastAppt.id} style={styles.historyCard}>
                             <View style={styles.historyHeader}>
@@ -241,6 +252,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                 <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>
+
     );
 }
 
