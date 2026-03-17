@@ -605,6 +605,9 @@ export const consultationAPI = {
   
   // POST /consultations/{id}/generate-soap - Manually trigger generation
   triggerSoapGeneration: (id) => api.post(`/consultations/${id}/generate-soap`),
+
+  // DELETE /consultations/{id} - Delete consultation record
+  deleteConsultation: (id) => api.delete(`/consultations/${id}`),
 };
 
 // ==================== APPOINTMENT API ====================

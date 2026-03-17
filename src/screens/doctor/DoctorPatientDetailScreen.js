@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as DocumentPicker from 'expo-document-picker';
 import { COLORS } from '../../constants/theme';
-import { doctorAPI } from '../../services/api';
+import { doctorAPI, consultationAPI } from '../../services/api';
 import DoctorAIChatScreen from './DoctorAIChatScreen';
 
 export default function DoctorPatientDetailScreen({ route, navigation }) {
@@ -291,6 +291,7 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
               upcomingAppointments={upcomingAppointments}
               loading={loading}
               patient={patient}
+              onRefresh={loadPatientDetails}
             />
           ) : activeTab === 'Documents' ? (
             <DocumentsView
@@ -322,7 +323,7 @@ export default function DoctorPatientDetailScreen({ route, navigation }) {
 
 // --- SUB-COMPONENTS ---
 
-function VisitsView({ navigation, visits, upcomingAppointments, loading, patient }) {
+function VisitsView({ navigation, visits, upcomingAppointments, loading, patient, onRefresh }) {
   const [subTab, setSubTab] = useState('upcoming'); // 'upcoming' or 'recent'
 
   if (loading) {
@@ -452,7 +453,27 @@ function VisitsView({ navigation, visits, upcomingAppointments, loading, patient
                     <TouchableOpacity
                       style={{ width: 44, height: 44, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#FEE2E2', borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => {
-                        Alert.alert('Delete', 'Consultation deletion not implemented in this view natively yet.');
+                        Alert.alert(
+                          'Delete Consultation',
+                          'Are you sure you want to delete this consultation record? This cannot be undone.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { 
+                              text: 'OK', 
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  await consultationAPI.deleteConsultation(visit.id);
+                                  Alert.alert('Deleted', 'Consultation record deleted successfully.');
+                                  if (onRefresh) onRefresh();
+                                } catch (err) {
+                                  console.error('Delete error:', err);
+                                  Alert.alert('Error', 'Failed to delete consultation record.');
+                                }
+                              }
+                            }
+                          ]
+                        );
                       }}
                     >
                       <Ionicons name="trash-outline" size={18} color="#EF4444" />
