@@ -15,6 +15,61 @@ import { consultationAPI, patientAPI } from '../../services/api';
 import ErrorHandler from '../../services/errorHandler';
 import moment from 'moment';
 
+const SOAP_SECTIONS = [
+    {
+        key: 'subjective',
+        icon: 'chatbubble-ellipses-outline',
+        label: 'What You Told Us',
+        description: 'Your symptoms and concerns as you described them',
+        color: '#3B82F6',
+        bg: '#EFF6FF',
+        border: '#BFDBFE',
+    },
+    {
+        key: 'objective',
+        icon: 'flask-outline',
+        label: 'What We Observed',
+        description: 'Clinical findings, vitals, and examination results',
+        color: '#8B5CF6',
+        bg: '#F5F3FF',
+        border: '#DDD6FE',
+    },
+    {
+        key: 'assessment',
+        icon: 'clipboard-outline',
+        label: 'Diagnosis & Findings',
+        description: 'Our medical assessment based on your visit',
+        color: '#10B981',
+        bg: '#ECFDF5',
+        border: '#A7F3D0',
+    },
+    {
+        key: 'plan',
+        icon: 'medical-outline',
+        label: 'Your Treatment Plan',
+        description: 'Recommended next steps and medications',
+        color: '#D97706',
+        bg: '#FFFBEB',
+        border: '#FDE68A',
+    },
+];
+
+const renderContent = (data) => {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (Array.isArray(data)) return data.map(item => `• ${renderContent(item)}`).join('\n');
+    if (typeof data === 'object') {
+        return Object.entries(data)
+            .map(([k, v]) => {
+                const key = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const val = typeof v === 'object' ? `\n${renderContent(v)}` : ` ${v}`;
+                return `${key}:${val}`;
+            })
+            .join('\n');
+    }
+    return String(data);
+};
+
 export default function ConsultationDetailScreen({ route, navigation }) {
     const { consultationId } = route.params;
     const [consultation, setConsultation] = useState(null);
@@ -165,22 +220,60 @@ export default function ConsultationDetailScreen({ route, navigation }) {
                     </View>
 
                     {soapNote ? (
-                        <View style={[styles.soapCard, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
-                            <View style={styles.soapSection}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                    <Ionicons name="heart" size={18} color="#0284C7" style={{ marginRight: 6 }} />
-                                    <Text style={[styles.soapLabel, { color: '#0284C7', marginBottom: 0 }]}>DOCTOR'S SUMMARY</Text>
+                        <View style={styles.soapContainer}>
+                            {/* 1. Quick Summary */}
+                            {(soapNote.patient_summary || soapNote.summary) && (
+                                <View style={[styles.soapCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderLeftColor: '#16A34A', borderLeftWidth: 5, marginBottom: 12 }]}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                        <Ionicons name="sparkles" size={18} color="#16A34A" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.soapLabel, { color: '#16A34A', marginBottom: 0 }]}>QUICK SUMMARY</Text>
+                                    </View>
+                                    <Text style={[styles.soapValue, { color: '#14532D', fontSize: 15, lineHeight: 22, fontWeight: '500' }]}>
+                                        {soapNote.patient_summary || soapNote.summary}
+                                    </Text>
                                 </View>
-                                {soapNote.patient_summary ? (
-                                    <Text style={[styles.soapValue, { color: '#0369A1', fontSize: 15, lineHeight: 24 }]}>
-                                        {soapNote.patient_summary}
-                                    </Text>
-                                ) : (
-                                    <Text style={[styles.soapValue, { color: '#64748B', fontStyle: 'italic' }]}>
-                                        Summary is being prepared by your doctor. Please check back later.
-                                    </Text>
-                                )}
-                            </View>
+                            )}
+
+                            {/* 2. Detailed Sections */}
+                            {SOAP_SECTIONS.map((section, index) => {
+                                const content = soapNote[section.key];
+                                if (!content) return null;
+
+                                return (
+                                    <View 
+                                        key={section.key} 
+                                        style={[
+                                            styles.soapCard, 
+                                            { 
+                                                backgroundColor: section.bg, 
+                                                borderColor: section.border, 
+                                                borderLeftColor: section.color,
+                                                borderLeftWidth: 5,
+                                                marginBottom: index === SOAP_SECTIONS.length - 1 ? 0 : 12
+                                            }
+                                        ]}
+                                    >
+                                        <View style={styles.sectionRow}>
+                                            <View style={[styles.iconContainer, { backgroundColor: 'white' }]}>
+                                                <Ionicons name={section.icon} size={18} color={section.color} />
+                                            </View>
+                                            <View style={{ flex: 1, marginLeft: 10 }}>
+                                                <Text style={[styles.soapLabel, { color: section.color, marginBottom: 2 }]}>
+                                                    {section.label.toUpperCase()}
+                                                </Text>
+                                                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+                                                    {section.description}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingTop: 10 }}>
+                                            <Text style={[styles.soapValue, { color: '#334155' }]}>
+                                                {renderContent(content)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                );
+                            })}
                         </View>
                     ) : consultation.hasSoapNote ? (
                         <TouchableOpacity style={styles.retryBtn} onPress={fetchSoapNote}>
@@ -263,8 +356,27 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#D1D9F0',
     },
+    soapContainer: {
+        width: '100%',
+    },
+    sectionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    iconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+    },
     soapSection: { marginBottom: 16 },
-    soapLabel: { fontSize: 11, fontWeight: '900', color: '#283593', marginBottom: 6 },
+    soapLabel: { fontSize: 11, fontWeight: '900', color: '#283593' },
     soapValue: { fontSize: 14, color: '#3949AB', lineHeight: 20 },
     emptySoap: { alignItems: 'center', padding: 20 },
     emptySoapText: { fontSize: 13, color: '#999', marginTop: 8 },
