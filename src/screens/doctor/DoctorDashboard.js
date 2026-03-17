@@ -25,10 +25,10 @@ export default function DoctorDashboard({ navigation }) {
    const [upcomingAppointments, setUpcomingAppointments] = useState([]);
    const [recentConsultations, setRecentConsultations] = useState([]);
    const [metrics, setMetrics] = useState({
-      pending_notes: 0,
-      urgent_notes: 0,
+      pending_review: 0,
+      high_urgency: 0,
       cleared_today: 0,
-      scheduled_today: 0
+      today_meetings: 0
    });
    const [doctorStatus, setDoctorStatus] = useState('active');
    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -115,7 +115,7 @@ export default function DoctorDashboard({ navigation }) {
                return startOfApt.getTime() === today.getTime();
             });
 
-            setTodayAppointmentCount(todaysAppointments.length);
+            // setTodayAppointmentCount(todaysAppointments.length); // This line is now handled by the consolidated metrics below
 
             const now = new Date();
             const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -141,27 +141,49 @@ export default function DoctorDashboard({ navigation }) {
             setUpcomingAppointments([]);
          }
 
-         // Fetch dashboard metrics
+         // Consolidated Dashboard Metrics Calculation (Parity with Web)
          try {
-            const [metricsRes, tasksRes] = await Promise.all([
-               doctorAPI.getDashboardMetrics(),
-               taskAPI.getTasks()
+            const [apptsRes, consultsRes, tasksRes] = await Promise.all([
+               doctorAPI.getAppointments().catch(() => ({ data: [] })),
+               doctorAPI.getRecords().catch(() => ({ data: [] })),
+               taskAPI.getTasks().catch(() => ({ data: [] }))
             ]);
 
-            const tasks = tasksRes.data || [];
-            const urgentTasks = tasks.filter(t => t.priority === 'urgent' && t.status !== 'completed').length;
+            const appointments = Array.isArray(apptsRes.data) ? apptsRes.data : (apptsRes.data?.appointments || []);
+            const consultations = Array.isArray(consultsRes.data) ? consultsRes.data : (consultsRes.data?.consultations || []);
+            const tasks = Array.isArray(tasksRes.data) ? tasksRes.data : (tasksRes.data?.tasks || tasksRes.data || []);
 
-            if (metricsRes.data) {
-               setMetrics({
-                  ...metricsRes.data,
-                  scheduled_today: todayAppointmentCount,
-                  cleared_today: metricsRes.data.patients_today || 0,
-                  urgent_notes: urgentTasks || metricsRes.data.urgent_notes
-               });
-            }
+            const today = new Date().toISOString().split('T')[0];
+
+            // 1. Pending Requests (Appointments with status 'pending')
+            const pendingRequests = appointments.filter(a => (a.status || '').toLowerCase() === 'pending').length;
+
+            // 2. High Urgency (Uncompleted tasks with high/urgent priority)
+            const urgentTasks = tasks.filter(t => 
+               t.status !== 'completed' && (t.priority === 'high' || t.priority === 'urgent')
+            ).length;
+
+            // 3. Completed Meetings (Consultations with status 'completed')
+            const completedMeetings = consultations.filter(c => c.status === 'completed').length;
+
+            // 4. Today's Total Meetings (Consultations scheduled for today)
+            const todayMeetings = consultations.filter(c => {
+               const cDate = new Date(c.scheduledAt || c.date).toISOString().split('T')[0];
+               return cDate === today;
+            }).length;
+
+            setMetrics({
+               pending_review: pendingRequests,
+               high_urgency: urgentTasks,
+               cleared_today: completedMeetings,
+               today_meetings: todayMeetings
+            });
+
+            // Update todayAppointmentCount for the greeting subtext (using consultations scheduled for today)
+            setTodayAppointmentCount(todayMeetings);
+
          } catch (err) {
-            console.log('No dashboard metrics found');
-            setMetrics(prev => ({ ...prev, scheduled_today: todayAppointmentCount }));
+            console.error('Error calculating dashboard metrics:', err);
          }
 
          try {
@@ -259,7 +281,7 @@ export default function DoctorDashboard({ navigation }) {
                <Text style={styles.greeting}>Good {getTimeOfDay()}, Dr. {doctorName}</Text>
                <View style={styles.statusRow}>
                   <Text style={styles.subGreeting}>
-                     You have <Text style={{ fontWeight: 'bold' }}>{metrics.scheduled_today || todayAppointmentCount} {metrics.scheduled_today === 1 || todayAppointmentCount === 1 ? 'appointment' : 'appointments'}</Text> today
+                     You have <Text style={{ fontWeight: 'bold' }}>{metrics.today_meetings} {metrics.today_meetings === 1 ? 'meeting' : 'meetings'}</Text> today
                   </Text>
                   <TouchableOpacity
                      style={[
@@ -298,8 +320,8 @@ export default function DoctorDashboard({ navigation }) {
                      <View style={[styles.summaryIcon, { backgroundColor: '#DBEAFE' }]}>
                         <Ionicons name="clipboard-outline" size={20} color="#3B82F6" />
                      </View>
-                     <Text style={styles.metricLabel}>Pending Review</Text>
-                     <Text style={styles.metricValue}>{metrics.pending_notes || 0}</Text>
+                     <Text style={styles.metricLabel}>Pending Requests</Text>
+                     <Text style={styles.metricValue}>{metrics.pending_review}</Text>
                   </View>
 
                   <View style={[styles.metricCard, { backgroundColor: '#FEF2F2' }]}>
@@ -307,15 +329,15 @@ export default function DoctorDashboard({ navigation }) {
                         <Ionicons name="warning-outline" size={20} color="#EF4444" />
                      </View>
                      <Text style={styles.metricLabel}>High Urgency</Text>
-                     <Text style={styles.metricValue}>{metrics.urgent_notes || 0}</Text>
+                     <Text style={styles.metricValue}>{metrics.high_urgency}</Text>
                   </View>
 
                   <View style={[styles.metricCard, { backgroundColor: '#F0FDF4' }]}>
                      <View style={[styles.summaryIcon, { backgroundColor: '#DCFCE7' }]}>
                         <Ionicons name="checkmark-circle-outline" size={20} color="#16A34A" />
                      </View>
-                     <Text style={styles.metricLabel}>Cleared Today</Text>
-                     <Text style={styles.metricValue}>{metrics.cleared_today || 0}</Text>
+                     <Text style={styles.metricLabel}>Completed Meetings</Text>
+                     <Text style={styles.metricValue}>{metrics.cleared_today}</Text>
                   </View>
 
                   <View style={[styles.metricCard, { backgroundColor: '#FFF7ED' }]}>
@@ -323,7 +345,7 @@ export default function DoctorDashboard({ navigation }) {
                         <Ionicons name="people-outline" size={20} color="#F97316" />
                      </View>
                      <Text style={styles.metricLabel}>Today's Total Meetings</Text>
-                     <Text style={styles.metricValue}>{metrics.scheduled_today || 0}</Text>
+                     <Text style={styles.metricValue}>{metrics.today_meetings}</Text>
                   </View>
                </View>
 
