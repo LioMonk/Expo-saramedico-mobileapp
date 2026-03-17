@@ -103,7 +103,7 @@ export default function DoctorSettingsScreen({ navigation }) {
          }
 
          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: 'images',
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.85,
@@ -126,21 +126,24 @@ export default function DoctorSettingsScreen({ navigation }) {
 
          // 1. Avatar upload if picked
          if (profile.avatar_file) {
-            const uploadRes = await authAPI.uploadAvatar(profile.avatar_file);
+            const localUri = profile.avatar_file; // keep this for display
+            const uploadRes = await authAPI.uploadAvatar(localUri);
             const serverUrl = uploadRes.preview_url || uploadRes.avatar_url || uploadRes.url;
-            if (serverUrl) {
-               const fixedAvatarUrl = fixUrl(serverUrl);
-               setProfile(prev => ({ ...prev, avatar_url: fixedAvatarUrl, avatar_file: null }));
-               avatarUpdated = true;
 
-               // Save globally
-               const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
-               if (userDataLocal) {
-                  const parsedUserData = JSON.parse(userDataLocal);
-                  parsedUserData.avatar = serverUrl;
-                  parsedUserData.avatar_url = serverUrl;
-                  await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUserData));
-               }
+            // Keep showing the local file URI for display.
+            // The server returns a presigned MinIO URL with localhost:9010 which
+            // the Android emulator cannot reach. The local URI works perfectly.
+            setProfile(prev => ({ ...prev, avatar_url: localUri, avatar_file: null }));
+            avatarUpdated = true;
+
+            // Save the server URL to local storage so it loads on next session
+            // (after adb reverse tcp:9010 tcp:9010 allows the emulator to reach MinIO)
+            const userDataLocal = await AsyncStorage.getItem(TOKEN_CONFIG.USER_DATA_KEY);
+            if (userDataLocal) {
+               const parsedUserData = JSON.parse(userDataLocal);
+               parsedUserData.avatar = serverUrl || localUri;
+               parsedUserData.avatar_url = serverUrl || localUri;
+               await AsyncStorage.setItem(TOKEN_CONFIG.USER_DATA_KEY, JSON.stringify(parsedUserData));
             }
          }
 
