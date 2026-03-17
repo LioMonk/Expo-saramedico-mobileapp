@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import SignOutModal from '../../components/SignOutModal';
@@ -96,20 +96,26 @@ export default function DoctorSettingsScreen({ navigation }) {
 
    const handleImagePick = async () => {
       try {
-         const result = await DocumentPicker.getDocumentAsync({
-            type: ['image/jpeg', 'image/png', 'image/jpg'],
-            copyToCacheDirectory: true,
+         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+         if (!permission.granted) {
+            Alert.alert('Permission Required', 'Please allow access to your photo library to upload a profile picture.');
+            return;
+         }
+
+         const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
          });
 
-         if (result.type === 'success' || !result.canceled) {
-            const file = result.assets ? result.assets[0] : result;
-            const imageUri = file.uri;
-
-            // Set optimistically as a pending file map
-            setProfile(prev => ({ ...prev, avatar_file: imageUri }));
+         if (!result.canceled && result.assets && result.assets.length > 0) {
+            const asset = result.assets[0];
+            setProfile(prev => ({ ...prev, avatar_file: asset.uri }));
          }
       } catch (error) {
          console.error('Error picking image:', error);
+         Alert.alert('Error', 'Could not open image picker. Please try again.');
       }
    };
 
@@ -198,14 +204,9 @@ export default function DoctorSettingsScreen({ navigation }) {
                            <TouchableOpacity style={styles.avatarCircle} onPress={handleImagePick}>
                               {profile.avatar_file || profile.avatar_url ? (
                                  <Image
-                                    source={{
-                                       uri: Platform.OS === 'android' && (profile.avatar_file || profile.avatar_url).includes('107.20')
-                                          ? (profile.avatar_file || profile.avatar_url).replace('107.20.98.130:9010', '10.0.2.2:9010')
-                                          : (profile.avatar_file || profile.avatar_url),
-                                       headers: (profile.avatar_file || profile.avatar_url).includes('107.20') ? { Host: '107.20.98.130:9010' } : {}
-                                    }}
+                                    source={{ uri: profile.avatar_file || profile.avatar_url }}
                                     style={{ width: '100%', height: '100%' }}
-                                    onError={(e) => {
+                                    onError={() => {
                                        console.error('❌ [Avatar] Image failed to load:', profile.avatar_file || profile.avatar_url);
                                     }}
                                  />
