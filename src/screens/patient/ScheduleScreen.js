@@ -504,7 +504,7 @@ export default function ScheduleScreen({ navigation }) {
         )}
 
         {/* Tabs */}
-        <View style={{ height: 45, marginTop: 16 }}>
+        <View style={{ marginTop: 8, height: 50 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
             <TouchableOpacity
               style={[styles.tab, activeTab === 'all' && styles.activeTab]}
@@ -755,12 +755,12 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    marginTop: 16,
+    alignItems: 'center',
     gap: 10,
   },
   tab: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: 'white',
     borderWidth: 1,
